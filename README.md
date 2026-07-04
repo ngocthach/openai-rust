@@ -1,7 +1,13 @@
 # openai-compat
 
+[![crates.io](https://img.shields.io/crates/v/openai-compat.svg)](https://crates.io/crates/openai-compat)
+[![docs.rs](https://docs.rs/openai-compat/badge.svg)](https://docs.rs/openai-compat)
+[![license](https://img.shields.io/crates/l/openai-compat.svg)](./LICENSE)
+
 Async Rust client for the OpenAI API and any OpenAI-compatible LLM provider,
 modeled on the official [openai-python](https://github.com/openai/openai-python) SDK.
+
+Full API documentation: [docs.rs/openai-compat](https://docs.rs/openai-compat)
 
 ## Features
 
