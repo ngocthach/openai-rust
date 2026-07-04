@@ -1,0 +1,2 @@
+# openai-rust
+OpenAI Rust
