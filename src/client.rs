@@ -5,14 +5,19 @@ use std::sync::Arc;
 
 use crate::config::{ClientBuilder, Config};
 use crate::error::OpenAIError;
+use crate::resources::assistants::{Assistants, Threads};
 use crate::resources::audio::Audio;
+use crate::resources::batches::Batches;
 use crate::resources::chat::Chat;
 use crate::resources::completions::Completions;
 use crate::resources::embeddings::Embeddings;
 use crate::resources::files::Files;
+use crate::resources::fine_tuning::FineTuning;
 use crate::resources::images::Images;
 use crate::resources::models::Models;
 use crate::resources::moderations::Moderations;
+use crate::resources::uploads::Uploads;
+use crate::resources::vector_stores::VectorStores;
 
 /// Asynchronous client for OpenAI-compatible APIs.
 ///
@@ -114,5 +119,64 @@ impl Client {
     /// Audio endpoints (speech, transcriptions).
     pub fn audio(&self) -> Audio {
         Audio::new(self.clone())
+    }
+
+    /// The batches resource.
+    pub fn batches(&self) -> Batches {
+        Batches::new(self.clone())
+    }
+
+    /// The resumable uploads resource.
+    pub fn uploads(&self) -> Uploads {
+        Uploads::new(self.clone())
+    }
+
+    /// Fine-tuning endpoints: `client.fine_tuning().jobs()`.
+    pub fn fine_tuning(&self) -> FineTuning {
+        FineTuning::new(self.clone())
+    }
+
+    /// The vector stores resource.
+    pub fn vector_stores(&self) -> VectorStores {
+        VectorStores::new(self.clone())
+    }
+
+    /// The assistants resource (beta v2): `client.assistants()`.
+    pub fn assistants(&self) -> Assistants {
+        Assistants::new(self.clone())
+    }
+
+    /// The threads resource (beta v2): `client.threads()`, with nested
+    /// `.messages()` and `.runs()`.
+    pub fn threads(&self) -> Threads {
+        Threads::new(self.clone())
+    }
+
+    /// Open a realtime WebSocket session for `model`, using this client's
+    /// API key, base URL, and organization/project settings.
+    ///
+    /// Azure realtime (deployment paths, `api-version` query, `api-key`
+    /// header over WebSocket) is not supported; Azure-configured clients
+    /// return an error.
+    pub async fn connect_realtime(
+        &self,
+        model: &str,
+    ) -> Result<crate::realtime::RealtimeSession, crate::realtime::RealtimeError> {
+        let config = self.config();
+        if config.azure.is_some() {
+            return Err(crate::realtime::RealtimeError::Connect(
+                "Azure realtime is not supported; use realtime::connect with explicit options"
+                    .into(),
+            ));
+        }
+        crate::realtime::connect(crate::realtime::RealtimeConnectOptions {
+            api_key: config.api_key.clone(),
+            base_url: config.base_url.clone(),
+            model: model.to_string(),
+            organization: config.organization.clone(),
+            project: config.project.clone(),
+            extra_headers: Vec::new(),
+        })
+        .await
     }
 }

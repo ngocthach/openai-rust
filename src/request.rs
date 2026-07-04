@@ -98,10 +98,23 @@ impl Client {
         let config = self.config();
         let mut headers = HeaderMap::new();
 
-        let mut auth = HeaderValue::from_str(&format!("Bearer {}", config.api_key))
-            .map_err(|_| OpenAIError::Config("API key contains invalid header characters".into()))?;
-        auth.set_sensitive(true);
-        headers.insert(AUTHORIZATION, auth);
+        if let Some(azure) = &config.azure {
+            // Azure auth replaces the default Bearer header entirely:
+            // `api-key: <key>` or `Authorization: Bearer <AD token>`.
+            let (name, value) = azure.auth.header();
+            let mut value = HeaderValue::from_str(&value).map_err(|_| {
+                OpenAIError::Config("Azure credential contains invalid header characters".into())
+            })?;
+            value.set_sensitive(true);
+            headers.insert(HeaderName::from_static(name), value);
+        } else {
+            let mut auth = HeaderValue::from_str(&format!("Bearer {}", config.api_key))
+                .map_err(|_| {
+                    OpenAIError::Config("API key contains invalid header characters".into())
+                })?;
+            auth.set_sensitive(true);
+            headers.insert(AUTHORIZATION, auth);
+        }
 
         if let Some(org) = &config.organization {
             headers.insert(
@@ -134,12 +147,37 @@ impl Client {
         options: &RequestOptions,
         attempt: u32,
     ) -> Result<reqwest::RequestBuilder, OpenAIError> {
+        let config = self.config();
+        let path = if let Some(azure) = &config.azure {
+            // Mirror azure.py::_prepare_url: only deployments endpoints get a
+            // `/deployments/{...}` segment — from the pinned deployment, or
+            // derived from the body's `model` when none is pinned. All other
+            // endpoints go straight under `{endpoint}/openai`.
+            if let Some(deployment) = azure.deployment.as_deref() {
+                if crate::azure::DEPLOYMENTS_ENDPOINTS.contains(&path) {
+                    format!("/deployments/{deployment}{path}")
+                } else {
+                    path.to_string()
+                }
+            } else {
+                let model = match &options.body {
+                    Payload::Json(value) => value.get("model").and_then(|m| m.as_str()),
+                    _ => None,
+                };
+                crate::azure::rewrite_path(path, false, model)
+            }
+        } else {
+            path.to_string()
+        };
         let url = format!("{}{}", self.base_url(), path);
         let mut builder = self
             .http()
             .request(method.clone(), url)
             .headers(self.request_headers(&options.extra_headers)?)
             .header("x-stainless-retry-count", attempt);
+        if !config.default_query.is_empty() {
+            builder = builder.query(&config.default_query);
+        }
         if !options.query.is_empty() {
             builder = builder.query(&options.query);
         }

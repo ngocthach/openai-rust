@@ -16,15 +16,18 @@
 //! # }
 //! ```
 
+pub mod azure;
 mod client;
 mod config;
 mod error;
 mod pagination;
+pub mod realtime;
 mod request;
 pub mod resources;
 mod retry;
 mod streaming;
 pub mod types;
+pub mod webhooks;
 
 pub use client::Client;
 pub use config::{
@@ -41,3 +44,4 @@ pub use types::chat::{
     MessageContent, Stop, StreamOptions,
 };
 pub use types::common::{FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage};
+pub use webhooks::{WebhookEvent, WebhookHeaders, Webhooks};

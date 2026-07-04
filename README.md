@@ -11,6 +11,15 @@ modeled on the official [openai-python](https://github.com/openai/openai-python)
   chunks, terminating on `[DONE]` and surfacing mid-stream errors
 - **Embeddings, models, moderations, legacy completions, images, files
   (multipart upload/download), audio (TTS + transcription)**
+- **Batches, resumable uploads, fine-tuning jobs, vector stores, assistants
+  (beta v2: threads, messages, runs, run steps)**
+- **Multimodal messages** — text, image, and audio content parts
+- **Webhooks** — HMAC-SHA256 signature verification (constant-time, timestamp
+  tolerance) matching the Python SDK
+- **Azure OpenAI** — `api-version` query, `api-key`/Entra ID auth, and
+  deployment-based paths via the same client builder
+- **Realtime API** — WebSocket sessions (tokio-tungstenite/rustls) with JSON
+  events and typed event constructors
 - **Automatic retries** — mirrors the Python SDK: 408/409/429/5xx and
   connection errors, exponential backoff with jitter (0.5s → 8s),
   `Retry-After`/`retry-after-ms`/`x-should-retry` support, 2 retries by default
@@ -171,6 +180,84 @@ match client.chat().completions().create(req).await {
 # }
 ```
 
+### Multimodal messages
+
+```rust,no_run
+use openai_rust::{ChatCompletionRequest, ContentPart, Message};
+
+# fn build() -> ChatCompletionRequest {
+ChatCompletionRequest::new(
+    "gpt-4o",
+    vec![Message::user(vec![
+        ContentPart::text("What is in this image?"),
+        ContentPart::image_url("https://example.com/photo.png"),
+    ])],
+)
+# }
+```
+
+### Batches, fine-tuning, vector stores, assistants
+
+```rust,no_run
+use openai_rust::types::batches::BatchCreateParams;
+use openai_rust::types::fine_tuning::FineTuningJobRequest;
+
+# async fn run(client: openai_rust::Client) -> Result<(), openai_rust::OpenAIError> {
+let batch = client
+    .batches()
+    .create(BatchCreateParams::new("file-abc", "/v1/chat/completions", "24h"))
+    .await?;
+
+let job = client
+    .fine_tuning()
+    .jobs()
+    .create(FineTuningJobRequest::new("gpt-4o-mini-2024-07-18", "file-train"))
+    .await?;
+
+let stores = client.vector_stores().list(None).await?;
+let assistants = client.assistants().list(None).await?; // OpenAI-Beta: assistants=v2 sent automatically
+# Ok(())
+# }
+```
+
+### Webhooks
+
+```rust,no_run
+use openai_rust::webhooks::{Webhooks, WebhookHeaders};
+
+# fn verify(payload: &[u8], headers: &WebhookHeaders) -> bool {
+let webhooks = Webhooks::new(&std::env::var("OPENAI_WEBHOOK_SECRET").unwrap()).unwrap();
+webhooks.unwrap(payload, headers).is_ok() // verifies signature, then parses the event
+# }
+```
+
+### Azure OpenAI
+
+```rust,no_run
+# fn main() -> Result<(), openai_rust::OpenAIError> {
+let client = openai_rust::Client::builder()
+    .azure("https://my-resource.openai.azure.com", "2024-06-01")
+    .azure_deployment("my-gpt4o")   // optional: else derived from the request's `model`
+    .build()?;                      // key from AZURE_OPENAI_API_KEY, or .azure_ad_token(...)
+# Ok(())
+# }
+```
+
+### Realtime
+
+```rust,no_run
+use openai_rust::realtime::events;
+
+# async fn run(client: openai_rust::Client) -> Result<(), Box<dyn std::error::Error>> {
+let mut session = client.connect_realtime("gpt-4o-realtime-preview").await?;
+session.send(events::response_create()).await?;
+while let Some(event) = session.recv().await? {
+    println!("{}", event["type"]);
+}
+# Ok(())
+# }
+```
+
 ## Examples
 
 ```sh
@@ -181,13 +268,17 @@ OPENAI_API_KEY=sk-... cargo run --example tool-calling
 
 ## Scope
 
-v0.1 ports the core client surface of `openai-python`: chat, embeddings,
-models, moderations, legacy completions, images (generate), files, audio
-(speech/transcriptions), retries, streaming, and cursor pagination.
+v0.2 ports the full core client surface of `openai-python`: chat (incl.
+multimodal content parts), embeddings, models, moderations, legacy
+completions, images (generate), files, audio (speech/transcriptions), batches,
+resumable uploads, fine-tuning jobs, vector stores, assistants (beta v2),
+webhook signature verification, Azure OpenAI mode, realtime WebSockets,
+retries, streaming, and cursor pagination.
 
-Not included (yet): realtime/WebSockets, assistants, batches, fine-tuning
-management, vector stores, resumable uploads, webhooks, Azure-specific client,
-multimodal message content parts. For untyped endpoints use the
+Deliberately simplified: assistants streaming runs and the fully-typed
+realtime event surface are not modeled (events are `serde_json::Value` with
+typed constructors); deep polymorphic fields (graders, chunking filters,
+step details) are `serde_json::Value`. For untyped endpoints use the
 `client.get::<serde_json::Value>(...)` / `client.post(...)` escape hatch.
 
 ## License
