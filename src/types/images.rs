@@ -66,6 +66,17 @@ impl ImageGenerationRequest {
         self.response_format = Some(response_format.into());
         self
     }
+
+    /// Image style: `"vivid"` or `"natural"` (dall-e-3 only).
+    pub fn style(mut self, style: impl Into<String>) -> Self {
+        self.style = Some(style.into());
+        self
+    }
+
+    pub fn user(mut self, user: impl Into<String>) -> Self {
+        self.user = Some(user.into());
+        self
+    }
 }
 
 /// One generated image.

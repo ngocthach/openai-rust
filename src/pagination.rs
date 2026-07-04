@@ -37,24 +37,59 @@ pub trait HasId {
     fn id(&self) -> Option<&str>;
 }
 
+/// Build the cursor query pairs (`after`/`before`/`limit`/`order`) shared by
+/// list endpoints; module-specific params are appended by the caller.
+pub(crate) fn cursor_query(
+    after: Option<&str>,
+    before: Option<&str>,
+    limit: Option<u32>,
+    order: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut query = Vec::new();
+    if let Some(after) = after {
+        query.push(("after".to_string(), after.to_string()));
+    }
+    if let Some(before) = before {
+        query.push(("before".to_string(), before.to_string()));
+    }
+    if let Some(limit) = limit {
+        query.push(("limit".to_string(), limit.to_string()));
+    }
+    if let Some(order) = order {
+        query.push(("order".to_string(), order.to_string()));
+    }
+    query
+}
+
 impl Client {
     /// Fetch every item from a cursor-paginated list endpoint, following
     /// `after` cursors until `has_more` is false or a page is empty.
     pub(crate) async fn paginate_all<T: HasId + DeserializeOwned>(
         &self,
         path: &str,
+        query: Vec<(String, String)>,
+    ) -> Result<Vec<T>, OpenAIError> {
+        self.paginate_all_with_headers(path, query, Vec::new())
+            .await
+    }
+
+    /// [`Client::paginate_all`] with extra headers sent on every page request
+    /// (used by beta endpoints that require `OpenAI-Beta: assistants=v2`).
+    pub(crate) async fn paginate_all_with_headers<T: HasId + DeserializeOwned>(
+        &self,
+        path: &str,
         mut query: Vec<(String, String)>,
+        extra_headers: Vec<(String, String)>,
     ) -> Result<Vec<T>, OpenAIError> {
         let mut items: Vec<T> = Vec::new();
         let mut previous_cursor: Option<String> = None;
         loop {
-            let page: List<T> = self
-                .execute(
-                    reqwest::Method::GET,
-                    path,
-                    RequestOptions::query(query.clone()),
-                )
-                .await?;
+            let options = RequestOptions {
+                query: query.clone(),
+                extra_headers: extra_headers.clone(),
+                ..RequestOptions::default()
+            };
+            let page: List<T> = self.execute(reqwest::Method::GET, path, options).await?;
             let has_next = page.has_next_page();
             items.extend(page.data);
 

@@ -34,16 +34,35 @@ pub struct SseDecoder {
     data: Vec<String>,
     id: Option<String>,
     retry: Option<u64>,
+    bom_checked: bool,
 }
+
+/// Upper bound on bytes buffered while waiting for a line terminator —
+/// guards against a broken or malicious server streaming an endless line.
+const MAX_SSE_BUFFER: usize = 16 * 1024 * 1024;
 
 impl SseDecoder {
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Bytes currently buffered awaiting a line terminator.
+    pub fn buffered_len(&self) -> usize {
+        self.buf.len()
+    }
+
     /// Feed a chunk of bytes; returns all events completed by this chunk.
     pub fn feed(&mut self, chunk: &[u8]) -> Vec<ServerSentEvent> {
         self.buf.extend_from_slice(chunk);
+
+        // Per the SSE spec, strip one leading U+FEFF byte-order mark.
+        if !self.bom_checked && self.buf.len() >= 3 {
+            if self.buf.starts_with(&[0xEF, 0xBB, 0xBF]) {
+                self.buf.drain(..3);
+            }
+            self.bom_checked = true;
+        }
+
         let mut events = Vec::new();
 
         // Consume complete lines; terminators are \r\n, \n, or lone \r.
@@ -229,6 +248,12 @@ impl<T: DeserializeOwned> Stream for EventStream<T> {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Some(Ok(chunk))) => {
                     this.pending.extend(this.decoder.feed(&chunk));
+                    if this.decoder.buffered_len() > MAX_SSE_BUFFER {
+                        this.done = true;
+                        return Poll::Ready(Some(Err(OpenAIError::Stream(format!(
+                            "SSE line exceeded the {MAX_SSE_BUFFER} byte buffer limit"
+                        )))));
+                    }
                 }
                 Poll::Ready(Some(Err(err))) => {
                     this.done = true;
@@ -324,6 +349,17 @@ mod tests {
         let mut decoder = SseDecoder::new();
         let events = decoder.feed(b"data:  padded\ndata:none\n\n");
         assert_eq!(events[0].data, " padded\nnone");
+    }
+
+    #[test]
+    fn strips_leading_bom() {
+        let mut decoder = SseDecoder::new();
+        let events = decoder.feed(b"\xEF\xBB\xBFdata: first\n\n");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].data, "first");
+        // Only the first BOM is stripped; later ones are data.
+        let events = decoder.feed(b"data: \xEF\xBB\xBFx\n\n");
+        assert_eq!(events[0].data, "\u{FEFF}x");
     }
 
     #[test]

@@ -128,6 +128,9 @@ pub struct BatchCreateParams {
     pub input_file_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, String>>,
+    /// Expiration policy for the batch output/error files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_expires_after: Option<crate::types::common::ExpiresAfter>,
 }
 
 impl BatchCreateParams {
@@ -141,6 +144,7 @@ impl BatchCreateParams {
             endpoint: endpoint.into(),
             input_file_id: input_file_id.into(),
             metadata: None,
+            output_expires_after: None,
         }
     }
 
@@ -172,13 +176,6 @@ impl BatchListParams {
 
     /// Build the `(key, value)` query pairs for the list request.
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".to_string(), after.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".to_string(), limit.to_string()));
-        }
-        query
+        crate::pagination::cursor_query(self.after.as_deref(), None, self.limit, None)
     }
 }

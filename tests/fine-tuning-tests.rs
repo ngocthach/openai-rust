@@ -1,11 +1,11 @@
 //! Integration tests for the fine-tuning jobs resource against a wiremock
 //! server: request shape, response parsing, and cursor pagination.
 
-use openai_rust::types::fine_tuning::{
+use openai_compat::types::fine_tuning::{
     AutoOr, DpoHyperparameters, DpoMethod, FineTuningJobRequest, FineTuningJobStatus,
     FineTuningMethod, Hyperparameters, SupervisedMethod,
 };
-use openai_rust::Client;
+use openai_compat::Client;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -187,7 +187,7 @@ async fn list_events_parses_and_sends_query() {
         .await;
 
     let client = client_for(&server);
-    let params = openai_rust::types::fine_tuning::FineTuningPageParams {
+    let params = openai_compat::types::fine_tuning::FineTuningPageParams {
         after: None,
         limit: Some(2),
     };
@@ -261,7 +261,7 @@ async fn list_jobs_sends_metadata_filter() {
     let client = client_for(&server);
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("env".to_string(), "prod".to_string());
-    let params = openai_rust::types::fine_tuning::FineTuningJobListParams {
+    let params = openai_compat::types::fine_tuning::FineTuningJobListParams {
         after: None,
         limit: Some(5),
         metadata: Some(metadata),

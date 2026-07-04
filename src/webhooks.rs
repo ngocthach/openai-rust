@@ -29,6 +29,10 @@ pub const DEFAULT_TOLERANCE_SECS: i64 = 300;
 /// `_exceptions.py::InvalidWebhookSignatureError` in `openai-python`.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WebhookVerificationError {
+    /// One of the `webhook-id`/`webhook-timestamp`/`webhook-signature`
+    /// headers is missing.
+    #[error("Missing required webhook headers")]
+    MissingHeaders,
     /// The `webhook-timestamp` header was not a valid integer.
     #[error("Invalid webhook timestamp format")]
     InvalidTimestampFormat,
@@ -76,6 +80,28 @@ impl WebhookHeaders {
             timestamp: timestamp.into(),
             signature: signature.into(),
         }
+    }
+
+    /// Extract the three `webhook-*` headers via a lookup function, so any
+    /// HTTP framework's header map plugs in without a dependency here:
+    ///
+    /// ```no_run
+    /// # use openai_compat::webhooks::WebhookHeaders;
+    /// # fn get_header(name: &str) -> Option<String> { None }
+    /// let headers = WebhookHeaders::from_lookup(|name| get_header(name))
+    ///     .expect("missing webhook headers");
+    /// ```
+    ///
+    /// Lookups are performed with lowercase header names.
+    pub fn from_lookup(
+        get: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, WebhookVerificationError> {
+        let field = |name: &str| get(name).ok_or(WebhookVerificationError::MissingHeaders);
+        Ok(Self {
+            id: field("webhook-id")?,
+            timestamp: field("webhook-timestamp")?,
+            signature: field("webhook-signature")?,
+        })
     }
 }
 
@@ -156,13 +182,15 @@ impl Webhooks {
             .map(|part| part.strip_prefix("v1,").unwrap_or(part))
             .collect();
 
-        // 3. Compute the expected signature over "{id}.{timestamp}.{body}".
-        let body = String::from_utf8_lossy(payload);
-        let signed_payload = format!("{}.{}.{}", headers.id, headers.timestamp, body);
-
+        // 3. Compute the expected signature over "{id}.{timestamp}.{body}",
+        //    feeding the payload as raw bytes (no lossy UTF-8 conversion).
         let mut mac = HmacSha256::new_from_slice(&self.secret)
             .expect("HMAC-SHA256 accepts keys of any length");
-        mac.update(signed_payload.as_bytes());
+        mac.update(headers.id.as_bytes());
+        mac.update(b".");
+        mac.update(headers.timestamp.as_bytes());
+        mac.update(b".");
+        mac.update(payload);
         let expected = STANDARD.encode(mac.finalize().into_bytes());
         let expected_bytes = expected.as_bytes();
 

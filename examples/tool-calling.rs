@@ -5,7 +5,7 @@
 //! OPENAI_API_KEY=sk-... cargo run --example tool-calling
 //! ```
 
-use openai_rust::{ChatCompletionRequest, Client, Message, Tool, ToolChoice};
+use openai_compat::{ChatCompletionRequest, Client, Message, Tool, ToolChoice};
 use serde_json::json;
 
 #[tokio::main]

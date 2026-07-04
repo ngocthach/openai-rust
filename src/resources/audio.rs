@@ -30,11 +30,56 @@ impl Audio {
     }
 
     /// Speech-to-text: transcribe an audio file (multipart upload).
+    ///
+    /// Parses the JSON response shapes (`response_format` of `json`, the
+    /// default, or `verbose_json`). For the plain-text formats (`text`,
+    /// `srt`, `vtt`) use [`Audio::transcriptions_raw`].
     pub async fn transcriptions(
         &self,
         file: FileUpload,
         request: TranscriptionRequest,
     ) -> Result<Transcription, OpenAIError> {
+        if matches!(
+            request.response_format.as_deref(),
+            Some("text") | Some("srt") | Some("vtt")
+        ) {
+            return Err(OpenAIError::Config(format!(
+                "response_format {:?} returns plain text; use transcriptions_raw",
+                request.response_format.as_deref().unwrap_or_default()
+            )));
+        }
+        let fields = transcription_fields(file, request);
+        self.client
+            .execute(
+                Method::POST,
+                "/audio/transcriptions",
+                RequestOptions::multipart(fields),
+            )
+            .await
+    }
+
+    /// Speech-to-text returning the raw response body as text — for the
+    /// non-JSON `response_format`s (`text`, `srt`, `vtt`).
+    pub async fn transcriptions_raw(
+        &self,
+        file: FileUpload,
+        request: TranscriptionRequest,
+    ) -> Result<String, OpenAIError> {
+        let fields = transcription_fields(file, request);
+        let bytes = self
+            .client
+            .execute_bytes(
+                Method::POST,
+                "/audio/transcriptions",
+                RequestOptions::multipart(fields),
+            )
+            .await?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+}
+
+fn transcription_fields(file: FileUpload, request: TranscriptionRequest) -> Vec<MultipartField> {
+    {
         let mut fields = vec![
             MultipartField::File {
                 name: "file".into(),
@@ -71,12 +116,6 @@ impl Audio {
                 value: temperature.to_string(),
             });
         }
-        self.client
-            .execute(
-                Method::POST,
-                "/audio/transcriptions",
-                RequestOptions::multipart(fields),
-            )
-            .await
+        fields
     }
 }

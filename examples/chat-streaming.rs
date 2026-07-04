@@ -7,7 +7,7 @@
 use std::io::Write;
 
 use futures_util::StreamExt;
-use openai_rust::{ChatCompletionRequest, Client, Message};
+use openai_compat::{ChatCompletionRequest, Client, Message};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

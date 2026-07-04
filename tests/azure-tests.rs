@@ -2,7 +2,7 @@
 //! `api-version` query, `api-key`/AD-token auth, and deployment path
 //! rewriting — mirroring `openai-python/src/openai/lib/azure.py`.
 
-use openai_rust::{ChatCompletionRequest, Client, Message};
+use openai_compat::{ChatCompletionRequest, Client, Message};
 use serde_json::json;
 use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};

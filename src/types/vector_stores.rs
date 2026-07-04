@@ -231,7 +231,7 @@ pub struct VectorStoreCreateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_after: Option<ExpiresAfter>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -258,7 +258,7 @@ impl VectorStoreCreateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -280,7 +280,7 @@ pub struct VectorStoreUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_after: Option<ExpiresAfter>,
 }
@@ -295,7 +295,7 @@ impl VectorStoreUpdateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -318,20 +318,12 @@ pub struct VectorStoreListParams {
 
 impl VectorStoreListParams {
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".to_string(), after.clone()));
-        }
-        if let Some(before) = &self.before {
-            query.push(("before".to_string(), before.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".to_string(), limit.to_string()));
-        }
-        if let Some(order) = &self.order {
-            query.push(("order".to_string(), order.clone()));
-        }
-        query
+        crate::pagination::cursor_query(
+            self.after.as_deref(),
+            self.before.as_deref(),
+            self.limit,
+            self.order.as_deref(),
+        )
     }
 }
 
@@ -451,21 +443,14 @@ pub struct VectorStoreFileListParams {
 
 impl VectorStoreFileListParams {
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".to_string(), after.clone()));
-        }
-        if let Some(before) = &self.before {
-            query.push(("before".to_string(), before.clone()));
-        }
+        let mut query = crate::pagination::cursor_query(
+            self.after.as_deref(),
+            self.before.as_deref(),
+            self.limit,
+            self.order.as_deref(),
+        );
         if let Some(filter) = &self.filter {
             query.push(("filter".to_string(), filter.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".to_string(), limit.to_string()));
-        }
-        if let Some(order) = &self.order {
-            query.push(("order".to_string(), order.clone()));
         }
         query
     }

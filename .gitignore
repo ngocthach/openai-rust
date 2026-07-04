@@ -26,3 +26,6 @@ target
 /target
 .mcp.json
 .DS_Store
+
+.env
+.env.local

@@ -6,7 +6,7 @@
 //! building and event-constructor shapes.
 
 use futures_util::{SinkExt, StreamExt};
-use openai_rust::realtime::{self, build_realtime_url, events, RealtimeConnectOptions};
+use openai_compat::realtime::{self, build_realtime_url, events, RealtimeConnectOptions};
 use serde_json::{json, Value};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;

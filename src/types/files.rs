@@ -50,7 +50,9 @@ impl FileUpload {
         }
     }
 
-    /// Read the upload from disk, using the file name from the path.
+    /// Read the upload from disk, using the file name from the path and
+    /// inferring the content type from the extension (like the Python SDK's
+    /// `mimetypes` guess).
     pub async fn from_path(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
         let path = path.as_ref();
         let filename = path
@@ -58,6 +60,34 @@ impl FileUpload {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| "file".to_string());
         let bytes = tokio::fs::read(path).await?;
-        Ok(Self::new(filename, bytes))
+        let mut upload = Self::new(filename, bytes);
+        upload.content_type = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .and_then(mime_for_extension)
+            .map(str::to_owned);
+        Ok(upload)
     }
+}
+
+/// Content types for extensions commonly uploaded to LLM APIs.
+fn mime_for_extension(ext: &str) -> Option<&'static str> {
+    Some(match ext.to_ascii_lowercase().as_str() {
+        "mp3" | "mpga" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "m4a" | "mp4" => "audio/mp4",
+        "flac" => "audio/flac",
+        "ogg" | "oga" => "audio/ogg",
+        "webm" => "audio/webm",
+        "json" => "application/json",
+        "jsonl" => "application/jsonl",
+        "txt" => "text/plain",
+        "csv" => "text/csv",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => return None,
+    })
 }

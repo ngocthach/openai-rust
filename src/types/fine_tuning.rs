@@ -297,20 +297,15 @@ impl FineTuningJobRequest {
 #[derive(Debug, Clone, Default)]
 pub struct FineTuningJobListParams {
     pub after: Option<String>,
-    pub limit: Option<i32>,
+    pub limit: Option<u32>,
     /// Metadata filters, serialized as `metadata[key]=value`.
     pub metadata: Option<HashMap<String, String>>,
 }
 
 impl FineTuningJobListParams {
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".into(), after.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".into(), limit.to_string()));
-        }
+        let mut query =
+            crate::pagination::cursor_query(self.after.as_deref(), None, self.limit, None);
         if let Some(metadata) = &self.metadata {
             for (key, value) in metadata {
                 query.push((format!("metadata[{key}]"), value.clone()));
@@ -324,19 +319,12 @@ impl FineTuningJobListParams {
 #[derive(Debug, Clone, Default)]
 pub struct FineTuningPageParams {
     pub after: Option<String>,
-    pub limit: Option<i32>,
+    pub limit: Option<u32>,
 }
 
 impl FineTuningPageParams {
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".into(), after.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".into(), limit.to_string()));
-        }
-        query
+        crate::pagination::cursor_query(self.after.as_deref(), None, self.limit, None)
     }
 }
 

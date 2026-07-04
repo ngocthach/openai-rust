@@ -2,9 +2,9 @@
 //! mapping, retry behavior, streaming, and pagination.
 
 use futures_util::StreamExt;
-use openai_rust::types::embeddings::{EmbeddingRequest, EmbeddingVector};
-use openai_rust::types::files::FileUpload;
-use openai_rust::{
+use openai_compat::types::embeddings::{EmbeddingRequest, EmbeddingVector};
+use openai_compat::types::files::FileUpload;
+use openai_compat::{
     ApiErrorKind, ChatCompletionRequest, Client, Message, OpenAIError, ToolChoice,
 };
 use serde_json::json;
@@ -475,7 +475,7 @@ async fn audio_speech_returns_binary() {
     let client = client_for(&server);
     let audio = client
         .audio()
-        .speech(openai_rust::types::audio::SpeechRequest::new(
+        .speech(openai_compat::types::audio::SpeechRequest::new(
             "tts-1", "hello", "alloy",
         ))
         .await
@@ -515,7 +515,7 @@ async fn tool_call_round_trip() {
 
     let client = client_for(&server);
     let request = ChatCompletionRequest::new("gpt-4o", vec![Message::user("Weather in Hanoi?")])
-        .tools(vec![openai_rust::Tool::function(
+        .tools(vec![openai_compat::Tool::function(
             "get_weather",
             "Get weather",
             json!({"type": "object", "properties": {"city": {"type": "string"}}}),

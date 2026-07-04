@@ -46,6 +46,25 @@ pub struct Usage {
     pub completion_tokens_details: Option<serde_json::Value>,
 }
 
+/// File-expiration policy used by uploads (`expires_after`) and batch output
+/// files (`output_expires_after`): expire `seconds` after `anchor`
+/// (`"created_at"`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpiresAfter {
+    pub anchor: String,
+    pub seconds: u64,
+}
+
+impl ExpiresAfter {
+    /// Expire `seconds` after creation (anchor `"created_at"`).
+    pub fn after_creation(seconds: u64) -> Self {
+        Self {
+            anchor: "created_at".into(),
+            seconds,
+        }
+    }
+}
+
 /// Output format constraint for chat completions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

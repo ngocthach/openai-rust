@@ -137,20 +137,25 @@ impl OpenAIError {
     /// as JSON and the nested `error` object extracted when present.
     pub(crate) fn from_response(status: u16, request_id: Option<String>, body: &str) -> Self {
         let body = body.trim();
-        let detail = serde_json::from_str::<serde_json::Value>(body)
-            .ok()
+        let json = serde_json::from_str::<serde_json::Value>(body).ok();
+        let detail = json
+            .as_ref()
             .and_then(|v| {
-                let error = v.get("error").cloned().unwrap_or(v);
+                let error = v.get("error").cloned().unwrap_or_else(|| v.clone());
                 serde_json::from_value::<ApiErrorDetail>(error).ok()
             })
             .filter(|d| {
                 d.message.is_some() || d.error_type.is_some() || d.param.is_some() || d.code.is_some()
             });
 
-        let message = if body.is_empty() {
+        // Mirror `_base_client._make_status_error_from_response`: JSON bodies
+        // get the `Error code:` prefix; non-JSON bodies are used verbatim.
+        let message = if json.is_some() {
+            format!("Error code: {status} - {body}")
+        } else if body.is_empty() {
             format!("Error code: {status}")
         } else {
-            format!("Error code: {status} - {body}")
+            body.to_string()
         };
 
         Self::Api(Box::new(ApiError {
@@ -201,7 +206,12 @@ mod tests {
         let OpenAIError::Api(api) = err else { panic!() };
         assert!(api.detail.is_none());
         assert!(api.is_retryable());
-        assert_eq!(api.message, "Error code: 502 - Bad Gateway");
+        // Non-JSON bodies are used verbatim (mirrors the Python SDK).
+        assert_eq!(api.message, "Bad Gateway");
+
+        let err = OpenAIError::from_response(502, None, "");
+        let OpenAIError::Api(api) = err else { panic!() };
+        assert_eq!(api.message, "Error code: 502");
 
         let err = OpenAIError::from_response(429, None, r#"{"error": {"message": "slow down", "code": 42}}"#);
         let OpenAIError::Api(api) = err else { panic!() };

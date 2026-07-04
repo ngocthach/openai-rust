@@ -62,19 +62,12 @@ impl ListParams {
     }
 
     pub(crate) fn to_query(&self) -> Vec<(String, String)> {
-        let mut query = Vec::new();
-        if let Some(after) = &self.after {
-            query.push(("after".into(), after.clone()));
-        }
-        if let Some(before) = &self.before {
-            query.push(("before".into(), before.clone()));
-        }
-        if let Some(limit) = self.limit {
-            query.push(("limit".into(), limit.to_string()));
-        }
-        if let Some(order) = &self.order {
-            query.push(("order".into(), order.clone()));
-        }
+        let mut query = crate::pagination::cursor_query(
+            self.after.as_deref(),
+            self.before.as_deref(),
+            self.limit,
+            self.order.as_deref(),
+        );
         if let Some(run_id) = &self.run_id {
             query.push(("run_id".into(), run_id.clone()));
         }
@@ -102,7 +95,7 @@ pub struct AssistantCreateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,7 +133,7 @@ impl AssistantCreateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -188,7 +181,7 @@ pub struct AssistantUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,7 +216,7 @@ impl AssistantUpdateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -235,6 +228,31 @@ impl AssistantUpdateParams {
 
     pub fn tool_resources(mut self, tool_resources: Value) -> Self {
         self.tool_resources = Some(tool_resources);
+        self
+    }
+
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    pub fn temperature(mut self, temperature: f64) -> Self {
+        self.temperature = Some(temperature);
+        self
+    }
+
+    pub fn top_p(mut self, top_p: f64) -> Self {
+        self.top_p = Some(top_p);
+        self
+    }
+
+    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(effort.into());
+        self
+    }
+
+    pub fn response_format(mut self, response_format: Value) -> Self {
+        self.response_format = Some(response_format);
         self
     }
 }
@@ -249,7 +267,7 @@ pub struct ThreadCreateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub messages: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_resources: Option<Value>,
 }
@@ -264,7 +282,7 @@ impl ThreadCreateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -279,7 +297,7 @@ impl ThreadCreateParams {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ThreadUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_resources: Option<Value>,
 }
@@ -289,7 +307,7 @@ impl ThreadUpdateParams {
         Self::default()
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -340,7 +358,7 @@ pub struct MessageCreateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 impl MessageCreateParams {
@@ -368,7 +386,7 @@ impl MessageCreateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -378,7 +396,7 @@ impl MessageCreateParams {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct MessageUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 impl MessageUpdateParams {
@@ -386,7 +404,7 @@ impl MessageUpdateParams {
         Self::default()
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -409,7 +427,7 @@ pub struct RunCreateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub additional_messages: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -460,7 +478,7 @@ impl RunCreateParams {
         self
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }
@@ -520,7 +538,7 @@ impl RunCreateParams {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct RunUpdateParams {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    pub metadata: Option<std::collections::HashMap<String, String>>,
 }
 
 impl RunUpdateParams {
@@ -528,7 +546,7 @@ impl RunUpdateParams {
         Self::default()
     }
 
-    pub fn metadata(mut self, metadata: Value) -> Self {
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
         self.metadata = Some(metadata);
         self
     }

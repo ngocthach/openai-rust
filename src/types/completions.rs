@@ -108,6 +108,72 @@ impl CompletionRequest {
         self.stop = Some(stop);
         self
     }
+
+    pub fn n(mut self, n: u32) -> Self {
+        self.n = Some(n);
+        self
+    }
+
+    pub fn seed(mut self, seed: i64) -> Self {
+        self.seed = Some(seed);
+        self
+    }
+
+    pub fn echo(mut self, echo: bool) -> Self {
+        self.echo = Some(echo);
+        self
+    }
+
+    pub fn best_of(mut self, best_of: u32) -> Self {
+        self.best_of = Some(best_of);
+        self
+    }
+
+    pub fn suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.suffix = Some(suffix.into());
+        self
+    }
+
+    pub fn frequency_penalty(mut self, penalty: f64) -> Self {
+        self.frequency_penalty = Some(penalty);
+        self
+    }
+
+    pub fn presence_penalty(mut self, penalty: f64) -> Self {
+        self.presence_penalty = Some(penalty);
+        self
+    }
+
+    /// Number of top logprobs to include per token (0-5).
+    pub fn logprobs(mut self, logprobs: u32) -> Self {
+        self.logprobs = Some(logprobs);
+        self
+    }
+
+    pub fn user(mut self, user: impl Into<String>) -> Self {
+        self.user = Some(user.into());
+        self
+    }
+
+    pub fn stream_options(mut self, stream_options: StreamOptions) -> Self {
+        self.stream_options = Some(stream_options);
+        self
+    }
+}
+
+/// Log-probability information for a legacy completion choice, mirroring
+/// `completion_choice.py::Logprobs`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompletionLogprobs {
+    #[serde(default)]
+    pub text_offset: Option<Vec<u64>>,
+    #[serde(default)]
+    pub token_logprobs: Option<Vec<Option<f64>>>,
+    #[serde(default)]
+    pub tokens: Option<Vec<String>>,
+    #[serde(default)]
+    pub top_logprobs: Option<Vec<Option<std::collections::HashMap<String, f64>>>>,
 }
 
 /// One generated completion.
@@ -119,7 +185,7 @@ pub struct CompletionChoice {
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<serde_json::Value>,
+    pub logprobs: Option<CompletionLogprobs>,
 }
 
 /// Response from `POST /completions` (also the streamed chunk shape).

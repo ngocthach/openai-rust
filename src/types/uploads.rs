@@ -84,6 +84,8 @@ pub struct UploadCreateParams {
     /// The intended purpose, e.g. `assistants`, `batch`, `fine-tune`, `vision`,
     /// `user_data`, or `evals`.
     pub purpose: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_after: Option<crate::types::common::ExpiresAfter>,
 }
 
 impl UploadCreateParams {
@@ -98,6 +100,12 @@ impl UploadCreateParams {
             filename: filename.into(),
             mime_type: mime_type.into(),
             purpose: purpose.into(),
+            expires_after: None,
         }
+    }
+
+    pub fn expires_after(mut self, expires_after: crate::types::common::ExpiresAfter) -> Self {
+        self.expires_after = Some(expires_after);
+        self
     }
 }

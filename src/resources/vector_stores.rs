@@ -19,11 +19,15 @@ use crate::types::vector_stores::{
     VectorStoreSearchParams, VectorStoreSearchResponse, VectorStoreUpdateParams,
 };
 
-/// Attach the required beta header to a set of request options.
+/// The beta header sent on every request in this module.
+const BETA_HEADER: (&str, &str) = ("OpenAI-Beta", "assistants=v2");
+
+/// Prepend the beta header so a caller-supplied header of the same name
+/// (added later) would still win, matching the Python header-merge semantics.
 fn with_beta(mut options: RequestOptions) -> RequestOptions {
     options
         .extra_headers
-        .push(("OpenAI-Beta".to_string(), "assistants=v2".to_string()));
+        .insert(0, (BETA_HEADER.0.to_string(), BETA_HEADER.1.to_string()));
     options
 }
 
@@ -36,29 +40,15 @@ fn beta_json<B: serde::Serialize>(body: &B) -> Result<RequestOptions, OpenAIErro
 async fn paginate_all_beta<T: HasId + DeserializeOwned>(
     client: &Client,
     path: &str,
-    mut query: Vec<(String, String)>,
+    query: Vec<(String, String)>,
 ) -> Result<Vec<T>, OpenAIError> {
-    let mut items: Vec<T> = Vec::new();
-    let mut previous_cursor: Option<String> = None;
-    loop {
-        let page: List<T> = client
-            .execute(Method::GET, path, with_beta(RequestOptions::query(query.clone())))
-            .await?;
-        let has_next = page.has_next_page();
-        items.extend(page.data);
-        if !has_next {
-            return Ok(items);
-        }
-        let Some(cursor) = items.last().and_then(HasId::id).map(str::to_owned) else {
-            return Ok(items);
-        };
-        if previous_cursor.as_deref() == Some(cursor.as_str()) {
-            return Ok(items);
-        }
-        previous_cursor = Some(cursor.clone());
-        query.retain(|(k, _)| k != "after");
-        query.push(("after".into(), cursor));
-    }
+    client
+        .paginate_all_with_headers(
+            path,
+            query,
+            vec![(BETA_HEADER.0.to_string(), BETA_HEADER.1.to_string())],
+        )
+        .await
 }
 
 /// The vector stores resource.

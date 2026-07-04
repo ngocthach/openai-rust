@@ -218,6 +218,30 @@ pub struct ChatCompletionRequest {
     pub top_p: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    /// Reasoning effort for reasoning models (`"minimal"`, `"low"`,
+    /// `"medium"`, `"high"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logit_bias: Option<std::collections::HashMap<String, i32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub store: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
+    /// Output modalities, e.g. `["text", "audio"]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modalities: Option<Vec<String>>,
+    /// Audio output configuration (`{"voice": ..., "format": ...}`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio: Option<serde_json::Value>,
+    /// Escape hatch: additional request parameters flattened into the JSON
+    /// body, for provider-specific or newly-added params not yet typed.
+    #[serde(flatten, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl ChatCompletionRequest {
@@ -308,6 +332,35 @@ impl ChatCompletionRequest {
         self.user = Some(user.into());
         self
     }
+
+    /// Reasoning effort for reasoning models: `"minimal"`, `"low"`,
+    /// `"medium"`, or `"high"`.
+    pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
+        self.reasoning_effort = Some(effort.into());
+        self
+    }
+
+    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
+        self.parallel_tool_calls = Some(parallel);
+        self
+    }
+
+    pub fn metadata(mut self, metadata: std::collections::HashMap<String, String>) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    pub fn store(mut self, store: bool) -> Self {
+        self.store = Some(store);
+        self
+    }
+
+    /// Set an arbitrary extra parameter on the request body (escape hatch
+    /// for provider-specific or newly-added params).
+    pub fn param(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+        self.extra.insert(key.into(), value.into());
+        self
+    }
 }
 
 /// A tool call made by the model.
@@ -325,6 +378,41 @@ pub struct FunctionCall {
     pub name: String,
     /// JSON-encoded arguments string (may be invalid JSON — validate before use).
     pub arguments: String,
+}
+
+/// Log-probability information for one generated token, mirroring
+/// `chat_completion_token_logprob.py`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TokenLogprob {
+    pub token: String,
+    pub logprob: f64,
+    /// UTF-8 byte values of the token, when it isn't valid UTF-8 on its own.
+    #[serde(default)]
+    pub bytes: Option<Vec<u8>>,
+    #[serde(default)]
+    pub top_logprobs: Vec<TopLogprob>,
+}
+
+/// One of the most likely alternative tokens at a position.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TopLogprob {
+    pub token: String,
+    pub logprob: f64,
+    #[serde(default)]
+    pub bytes: Option<Vec<u8>>,
+}
+
+/// Log-probability information for a chat choice
+/// (`choice_logprobs` in the Python SDK).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ChatLogprobs {
+    #[serde(default)]
+    pub content: Option<Vec<TokenLogprob>>,
+    #[serde(default)]
+    pub refusal: Option<Vec<TokenLogprob>>,
 }
 
 /// The assistant message inside a completion choice.
@@ -349,7 +437,7 @@ pub struct Choice {
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<serde_json::Value>,
+    pub logprobs: Option<ChatLogprobs>,
 }
 
 /// Response from `POST /chat/completions`.
@@ -424,7 +512,7 @@ pub struct ChunkChoice {
     #[serde(default)]
     pub finish_reason: Option<FinishReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<serde_json::Value>,
+    pub logprobs: Option<ChatLogprobs>,
 }
 
 /// A streamed chunk from `POST /chat/completions` with `stream: true`.

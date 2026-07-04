@@ -35,41 +35,22 @@ fn with_beta(mut options: RequestOptions) -> RequestOptions {
 }
 
 /// Fetch every item from a beta cursor-paginated endpoint, injecting the beta
-/// header on each page request (a beta-aware variant of `paginate_all`).
+/// header on each page request.
 async fn paginate_all_beta<T>(
     client: &Client,
     path: &str,
-    mut query: Vec<(String, String)>,
+    query: Vec<(String, String)>,
 ) -> Result<Vec<T>, OpenAIError>
 where
     T: HasId + DeserializeOwned,
 {
-    let mut items: Vec<T> = Vec::new();
-    let mut previous_cursor: Option<String> = None;
-    loop {
-        let page: List<T> = client
-            .execute(
-                Method::GET,
-                path,
-                with_beta(RequestOptions::query(query.clone())),
-            )
-            .await?;
-        let has_next = page.has_next_page();
-        items.extend(page.data);
-
-        if !has_next {
-            return Ok(items);
-        }
-        let Some(cursor) = items.last().and_then(HasId::id).map(str::to_owned) else {
-            return Ok(items);
-        };
-        if previous_cursor.as_deref() == Some(cursor.as_str()) {
-            return Ok(items);
-        }
-        previous_cursor = Some(cursor.clone());
-        query.retain(|(k, _)| k != "after");
-        query.push(("after".into(), cursor));
-    }
+    client
+        .paginate_all_with_headers(
+            path,
+            query,
+            vec![(BETA_HEADER.0.to_string(), BETA_HEADER.1.to_string())],
+        )
+        .await
 }
 
 // ---------------------------------------------------------------------------

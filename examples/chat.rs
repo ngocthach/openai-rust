@@ -5,7 +5,7 @@
 //! ```
 //! Works with any OpenAI-compatible provider via OPENAI_BASE_URL.
 
-use openai_rust::{ChatCompletionRequest, Client, Message};
+use openai_compat::{ChatCompletionRequest, Client, Message};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

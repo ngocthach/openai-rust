@@ -7,16 +7,16 @@
 //! The `base_url` is configurable, so any OpenAI-compatible provider works.
 //!
 //! ```no_run
-//! use openai_rust::Client;
+//! use openai_compat::Client;
 //!
-//! # async fn run() -> Result<(), openai_rust::OpenAIError> {
+//! # async fn run() -> Result<(), openai_compat::OpenAIError> {
 //! // Reads OPENAI_API_KEY (and optional OPENAI_BASE_URL) from the environment.
 //! let client = Client::new()?;
 //! # Ok(())
 //! # }
 //! ```
 
-pub mod azure;
+mod azure;
 mod client;
 mod config;
 mod error;
@@ -31,8 +31,7 @@ pub mod webhooks;
 
 pub use client::Client;
 pub use config::{
-    ClientBuilder, Config, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_MAX_RETRIES,
-    DEFAULT_TIMEOUT,
+    ClientBuilder, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT,
 };
 pub use error::{ApiError, ApiErrorDetail, ApiErrorKind, OpenAIError};
 pub use pagination::{HasId, List};

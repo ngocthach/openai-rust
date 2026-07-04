@@ -1,4 +1,4 @@
-# openai-rust
+# openai-compat
 
 Async Rust client for the OpenAI API and any OpenAI-compatible LLM provider,
 modeled on the official [openai-python](https://github.com/openai/openai-python) SDK.
@@ -32,7 +32,7 @@ modeled on the official [openai-python](https://github.com/openai/openai-python)
 
 ```toml
 [dependencies]
-openai-rust = { git = "https://github.com/ngocthach/openai-rust" }
+openai-compat = "0.2"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"   # only needed for streaming
 ```
@@ -40,7 +40,7 @@ futures-util = "0.3"   # only needed for streaming
 ## Quick start
 
 ```rust,no_run
-use openai_rust::{ChatCompletionRequest, Client, Message};
+use openai_compat::{ChatCompletionRequest, Client, Message};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -66,10 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Explicit configuration / other providers
 
 ```rust,no_run
-use openai_rust::Client;
+use openai_compat::Client;
 use std::time::Duration;
 
-# fn main() -> Result<(), openai_rust::OpenAIError> {
+# fn main() -> Result<(), openai_compat::OpenAIError> {
 let client = Client::builder()
     .api_key("sk-...")
     .base_url("https://openrouter.ai/api/v1") // any OpenAI-compatible endpoint
@@ -85,7 +85,7 @@ let client = Client::builder()
 
 ```rust,no_run
 use futures_util::StreamExt;
-use openai_rust::{ChatCompletionRequest, Client, Message};
+use openai_compat::{ChatCompletionRequest, Client, Message};
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 # let client = Client::new()?;
@@ -104,7 +104,7 @@ while let Some(chunk) = stream.next().await {
 ### Tool calling
 
 ```rust,no_run
-use openai_rust::{ChatCompletionRequest, Client, Message, Tool, ToolChoice};
+use openai_compat::{ChatCompletionRequest, Client, Message, Tool, ToolChoice};
 use serde_json::json;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,12 +130,12 @@ if let Some(calls) = &completion.choices[0].message.tool_calls {
 ### Other resources
 
 ```rust,no_run
-use openai_rust::types::embeddings::EmbeddingRequest;
-use openai_rust::types::files::FileUpload;
-use openai_rust::types::audio::SpeechRequest;
+use openai_compat::types::embeddings::EmbeddingRequest;
+use openai_compat::types::files::FileUpload;
+use openai_compat::types::audio::SpeechRequest;
 
 # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-# let client = openai_rust::Client::new()?;
+# let client = openai_compat::Client::new()?;
 // Embeddings
 let embeddings = client
     .embeddings()
@@ -163,9 +163,9 @@ let audio = client
 ### Error handling
 
 ```rust,no_run
-use openai_rust::{ApiErrorKind, OpenAIError};
+use openai_compat::{ApiErrorKind, OpenAIError};
 
-# async fn run(client: openai_rust::Client, req: openai_rust::ChatCompletionRequest) {
+# async fn run(client: openai_compat::Client, req: openai_compat::ChatCompletionRequest) {
 match client.chat().completions().create(req).await {
     Ok(completion) => println!("{:?}", completion.content()),
     Err(OpenAIError::Api(err)) => {
@@ -183,7 +183,7 @@ match client.chat().completions().create(req).await {
 ### Multimodal messages
 
 ```rust,no_run
-use openai_rust::{ChatCompletionRequest, ContentPart, Message};
+use openai_compat::{ChatCompletionRequest, ContentPart, Message};
 
 # fn build() -> ChatCompletionRequest {
 ChatCompletionRequest::new(
@@ -199,10 +199,10 @@ ChatCompletionRequest::new(
 ### Batches, fine-tuning, vector stores, assistants
 
 ```rust,no_run
-use openai_rust::types::batches::BatchCreateParams;
-use openai_rust::types::fine_tuning::FineTuningJobRequest;
+use openai_compat::types::batches::BatchCreateParams;
+use openai_compat::types::fine_tuning::FineTuningJobRequest;
 
-# async fn run(client: openai_rust::Client) -> Result<(), openai_rust::OpenAIError> {
+# async fn run(client: openai_compat::Client) -> Result<(), openai_compat::OpenAIError> {
 let batch = client
     .batches()
     .create(BatchCreateParams::new("file-abc", "/v1/chat/completions", "24h"))
@@ -223,7 +223,7 @@ let assistants = client.assistants().list(None).await?; // OpenAI-Beta: assistan
 ### Webhooks
 
 ```rust,no_run
-use openai_rust::webhooks::{Webhooks, WebhookHeaders};
+use openai_compat::webhooks::{Webhooks, WebhookHeaders};
 
 # fn verify(payload: &[u8], headers: &WebhookHeaders) -> bool {
 let webhooks = Webhooks::new(&std::env::var("OPENAI_WEBHOOK_SECRET").unwrap()).unwrap();
@@ -234,8 +234,8 @@ webhooks.unwrap(payload, headers).is_ok() // verifies signature, then parses the
 ### Azure OpenAI
 
 ```rust,no_run
-# fn main() -> Result<(), openai_rust::OpenAIError> {
-let client = openai_rust::Client::builder()
+# fn main() -> Result<(), openai_compat::OpenAIError> {
+let client = openai_compat::Client::builder()
     .azure("https://my-resource.openai.azure.com", "2024-06-01")
     .azure_deployment("my-gpt4o")   // optional: else derived from the request's `model`
     .build()?;                      // key from AZURE_OPENAI_API_KEY, or .azure_ad_token(...)
@@ -246,9 +246,9 @@ let client = openai_rust::Client::builder()
 ### Realtime
 
 ```rust,no_run
-use openai_rust::realtime::events;
+use openai_compat::realtime::events;
 
-# async fn run(client: openai_rust::Client) -> Result<(), Box<dyn std::error::Error>> {
+# async fn run(client: openai_compat::Client) -> Result<(), Box<dyn std::error::Error>> {
 let mut session = client.connect_realtime("gpt-4o-realtime-preview").await?;
 session.send(events::response_create()).await?;
 while let Some(event) = session.recv().await? {

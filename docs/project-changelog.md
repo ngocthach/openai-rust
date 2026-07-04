@@ -1,5 +1,37 @@
 # Project Changelog
 
+## Unreleased — crate rename + final findings round (2026-07-04)
+
+- **Renamed** crate `openai-rust` → **`openai-compat`** (the crates.io name `openai-rust` is taken); library path is now `openai_compat::`. All sources, tests, examples, and README updated.
+- **Fixed** error `Display` parity with Python: non-JSON error bodies are used verbatim; JSON bodies keep the `Error code: {status} - {body}` prefix.
+- **Added** typed logprobs: `ChatLogprobs`/`TokenLogprob`/`TopLogprob` (chat + chunks) and `CompletionLogprobs` (legacy) replace `serde_json::Value`.
+- **Added** missing builders: images `style`/`user`, speech `instructions`, transcription `response_format`, legacy-completion setters (n/seed/echo/best_of/suffix/penalties/logprobs/user/stream_options), assistant-update setters (description/temperature/top_p/reasoning_effort/response_format).
+- **Added** `ExpiresAfter` param type: `UploadCreateParams.expires_after` + `BatchCreateParams.output_expires_after`.
+- **Changed** `Batches::list_all` accepts `Option<BatchListParams>` like other modules; fine-tuning `limit` params unified to `u32`.
+- **Added** SSE decoder strips a leading U+FEFF BOM (per spec; ahead of the Python reference).
+- **Added** `WebhookHeaders::from_lookup` for framework-agnostic header extraction; new `MissingHeaders` error variant.
+- **Changed** cursor query building consolidated into shared `pagination::cursor_query` (removes 6 duplicated `to_query` bodies).
+- **Verified** MSRV: `rust-version = "1.86"` (library `cargo check` clean on 1.86; capped by transitive icu deps. Dev-deps like wiremock need newer, which does not constrain downstream users).
+
+Verification: 123 tests passing, clippy clean, `cargo publish --dry-run` green as `openai-compat v0.2.0`.
+
+## Unreleased — full-crate review round (2026-07-04)
+
+Four parallel code-reviewer passes over the whole crate (core pipeline, streaming/realtime/webhooks, v0.1 resources/docs, v0.2 resources/plan conformance). No critical findings; endpoint fidelity and plan conformance verified 100%. Fixes applied:
+
+- **Added** missing high-use chat params: `reasoning_effort`, `parallel_tool_calls`, `logit_bias`, `metadata`, `store`, `service_tier`, `modalities`, `audio`, plus a `#[serde(flatten)] extra` map with `.param(key, value)` escape hatch on `ChatCompletionRequest`.
+- **Fixed** `pub mod azure` leaking internal helpers into the public API (now private; Azure is configured only via `ClientBuilder`).
+- **Fixed** transcription footgun: `transcriptions()` now rejects plain-text `response_format`s (`text`/`srt`/`vtt`) with a clear error; new `transcriptions_raw()` returns them as `String`.
+- **Added** MIME inference from file extension in `FileUpload::from_path` (audio/json/image types), matching Python's mimetypes guess.
+- **Added** SSE buffer cap (16 MiB) guarding against unbounded memory growth from a broken/malicious streaming server.
+- **Fixed** webhook HMAC now computed over raw payload bytes (no lossy UTF-8 round-trip).
+- **Fixed** realtime URL builder rejects base URLs containing a query/fragment instead of emitting a corrupt URL; documented `send()` cancel-safety and idle-ping caveats.
+- **Changed** consolidated duplicated beta pagination (`assistants`/`vector_stores`) into shared `paginate_all_with_headers`; unified beta-header insertion order (caller override wins); added multi-page beta pagination regression test.
+- **Changed** standardized request-param `metadata` to `HashMap<String, String>` (responses stay lenient `Value`).
+- **Changed** Cargo.toml: reqwest `http2` feature enabled, `readme`/`rust-version = 1.75` metadata added, tokio features trimmed to `time`/`fs`/`net`, dropped inert `Config` re-export.
+
+Verification: 121 tests passing, clippy clean, `cargo publish --dry-run` green.
+
 ## v0.2.0 — 2026-07-04
 
 Full remaining `openai-python` core surface:

@@ -47,6 +47,12 @@ impl SpeechRequest {
         self.speed = Some(speed);
         self
     }
+
+    /// Voice direction, e.g. "speak slowly and warmly" (newer TTS models).
+    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.instructions = Some(instructions.into());
+        self
+    }
 }
 
 /// Parameters for `POST /audio/transcriptions` (multipart; the file itself is
@@ -88,6 +94,13 @@ impl TranscriptionRequest {
 
     pub fn temperature(mut self, temperature: f64) -> Self {
         self.temperature = Some(temperature);
+        self
+    }
+
+    /// `"json"` (default), `"verbose_json"`, or — via
+    /// `Audio::transcriptions_raw` — `"text"`, `"srt"`, `"vtt"`.
+    pub fn response_format(mut self, response_format: impl Into<String>) -> Self {
+        self.response_format = Some(response_format.into());
         self
     }
 }

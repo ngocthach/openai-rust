@@ -2,11 +2,11 @@
 //! wiremock server. Every test asserts the `OpenAI-Beta: assistants=v2` header
 //! is sent, plus body/response shape for the key endpoints.
 
-use openai_rust::types::assistants::{
+use openai_compat::types::assistants::{
     AssistantCreateParams, MessageCreateParams, RunCreateParams, RunStatus,
     SubmitToolOutputsParams, ThreadCreateParams, ToolOutput,
 };
-use openai_rust::Client;
+use openai_compat::Client;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

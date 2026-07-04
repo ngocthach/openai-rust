@@ -48,8 +48,9 @@ impl Batches {
     }
 
     /// List all batches, following pagination cursors.
-    pub async fn list_all(&self) -> Result<Vec<Batch>, OpenAIError> {
-        self.client.paginate_all("/batches", Vec::new()).await
+    pub async fn list_all(&self, params: Option<BatchListParams>) -> Result<Vec<Batch>, OpenAIError> {
+        let query = params.map(|p| p.to_query()).unwrap_or_default();
+        self.client.paginate_all("/batches", query).await
     }
 
     /// Cancel an in-progress batch.

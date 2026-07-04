@@ -2,9 +2,9 @@
 //! local wiremock server: request shape (verb/path/body), multipart part
 //! upload, and list pagination.
 
-use openai_rust::types::batches::{BatchCreateParams, BatchListParams, BatchStatus};
-use openai_rust::types::uploads::{UploadCreateParams, UploadStatus};
-use openai_rust::Client;
+use openai_compat::types::batches::{BatchCreateParams, BatchListParams, BatchStatus};
+use openai_compat::types::uploads::{UploadCreateParams, UploadStatus};
+use openai_compat::Client;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -155,7 +155,7 @@ async fn batch_list_all_follows_after_cursor() {
         .await;
 
     let client = client_for(&server);
-    let batches = client.batches().list_all().await.unwrap();
+    let batches = client.batches().list_all(None).await.unwrap();
     assert_eq!(
         batches.iter().map(|b| b.id.as_str()).collect::<Vec<_>>(),
         vec!["batch-1", "batch-2", "batch-3"]

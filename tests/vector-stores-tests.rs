@@ -2,11 +2,11 @@
 //! Verifies request shapes, the required `OpenAI-Beta: assistants=v2` header,
 //! POST-update/search bodies, and sub-resource routing.
 
-use openai_rust::types::vector_stores::{
+use openai_compat::types::vector_stores::{
     SearchQuery, VectorStoreCreateParams, VectorStoreFileBatchCreateParams,
     VectorStoreFileCreateParams, VectorStoreFileStatus, VectorStoreSearchParams, VectorStoreStatus,
 };
-use openai_rust::Client;
+use openai_compat::Client;
 use serde_json::json;
 use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -104,6 +104,43 @@ async fn store_list_sends_beta_header_and_returns_page() {
     let page = client.vector_stores().list(None).await.unwrap();
     assert_eq!(page.data.len(), 1);
     assert_eq!(page.data[0].id, "vs_123");
+}
+
+#[tokio::test]
+async fn store_list_all_follows_cursor_with_beta_header_on_every_page() {
+    let server = MockServer::start().await;
+    // Page 2 — mounted first so the `after` match wins.
+    Mock::given(method("GET"))
+        .and(path("/v1/vector_stores"))
+        .and(query_param("after", "vs_1"))
+        .and(header("OpenAI-Beta", "assistants=v2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [{"id": "vs_2", "object": "vector_store", "created_at": 2}],
+            "has_more": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Page 1.
+    Mock::given(method("GET"))
+        .and(path("/v1/vector_stores"))
+        .and(header("OpenAI-Beta", "assistants=v2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list",
+            "data": [{"id": "vs_1", "object": "vector_store", "created_at": 1}],
+            "has_more": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let stores = client.vector_stores().list_all().await.unwrap();
+    assert_eq!(
+        stores.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+        vec!["vs_1", "vs_2"]
+    );
 }
 
 #[tokio::test]
@@ -248,7 +285,7 @@ async fn file_create_sends_chunking_strategy_and_lists() {
     assert_eq!(created.vector_store_id, "vs_123");
 
     let page = files
-        .list(Some(openai_rust::types::vector_stores::VectorStoreFileListParams {
+        .list(Some(openai_compat::types::vector_stores::VectorStoreFileListParams {
             filter: Some("completed".into()),
             ..Default::default()
         }))

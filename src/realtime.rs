@@ -15,7 +15,7 @@
 //! any other event as a plain JSON value.
 //!
 //! ```no_run
-//! use openai_rust::realtime::{self, RealtimeConnectOptions};
+//! use openai_compat::realtime::{self, RealtimeConnectOptions};
 //! use serde_json::json;
 //!
 //! # async fn run() -> Result<(), realtime::RealtimeError> {
@@ -105,6 +105,15 @@ pub fn build_realtime_url(base_url: &str, model: &str) -> Result<String, Realtim
     };
     let base = base.trim_end_matches('/');
 
+    // A query or fragment on the base URL would end up in the middle of the
+    // final URL (`.../v1?k=v/realtime?model=...`) — reject rather than emit
+    // a silently broken URL.
+    if base.contains('?') || base.contains('#') {
+        return Err(RealtimeError::Connect(format!(
+            "base_url must not contain a query or fragment: {base}"
+        )));
+    }
+
     let ws_base = if let Some(rest) = base.strip_prefix("https://") {
         format!("wss://{rest}")
     } else if let Some(rest) = base.strip_prefix("http://") {
@@ -192,6 +201,10 @@ pub struct RealtimeSession {
 
 impl RealtimeSession {
     /// Send a JSON event as a text frame.
+    ///
+    /// Not cancel-safe: dropping this future mid-flight (e.g. racing it in
+    /// `tokio::select!`) can leave a partial frame on the connection. Let it
+    /// run to completion.
     pub async fn send(&mut self, event: serde_json::Value) -> Result<(), RealtimeError> {
         let text = serde_json::to_string(&event)?;
         self.ws
@@ -205,7 +218,10 @@ impl RealtimeSession {
     ///
     /// Returns `Ok(None)` on a clean close. Ping/Pong frames are handled
     /// automatically by the underlying library and skipped here; non-text
-    /// frames other than binary JSON are skipped as well.
+    /// frames other than binary JSON are skipped as well. This method is
+    /// cancel-safe. Keep polling it even when idle — server pings are only
+    /// answered while a read is in progress, and an unpolled session may be
+    /// dropped by the server.
     pub async fn recv(&mut self) -> Result<Option<serde_json::Value>, RealtimeError> {
         while let Some(message) = self.ws.next().await {
             let message = message.map_err(|e| RealtimeError::Protocol(e.to_string()))?;

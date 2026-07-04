@@ -1,16 +1,19 @@
 [package]
-name = "openai-rust"
+name = "openai-compat"
 version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "Async Rust client for OpenAI-compatible LLM provider APIs"
+readme = "README.md"
+rust-version = "1.86"
 repository = "https://github.com/ngocthach/openai-rust"
 keywords = ["openai", "llm", "ai", "chatgpt", "client"]
 categories = ["api-bindings", "asynchronous"]
+include = ["src/**", "examples/**", "/Cargo.toml", "/README.md", "/LICENSE"]
 
 [dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls"] }
-tokio = { version = "1", features = ["rt", "time", "macros", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "multipart", "rustls-tls", "http2"] }
+tokio = { version = "1", features = ["time", "fs", "net"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 futures-core = "0.3"
