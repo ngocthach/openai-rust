@@ -13,6 +13,9 @@ Full API documentation: [docs.rs/openai-compat](https://docs.rs/openai-compat)
 
 - **Chat completions** — full request surface (tools, `response_format` /
   JSON schema, penalties, logprobs, seed, stop, ...) with typed responses
+- **Responses API** — `create`/`retrieve`/`delete`/`cancel`, background mode
+  with resumable streaming, stateful chaining via `previous_response_id`, and
+  `input_items` pagination
 - **Streaming** — server-sent events exposed as a `futures::Stream` of typed
   chunks, terminating on `[DONE]` and surfacing mid-stream errors
 - **Embeddings, models, moderations, legacy completions, images, files
@@ -132,6 +135,35 @@ if let Some(calls) = &completion.choices[0].message.tool_calls {
 # Ok(())
 # }
 ```
+
+### Responses API
+
+```rust,no_run
+use openai_compat::{Client, CreateResponseRequest};
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+# let client = Client::new()?;
+let request = CreateResponseRequest::new("gpt-4o-mini", "Hello!");
+let response = client.responses().create(request).await?;
+println!("{}", response.output_text());
+
+// Stateful multi-turn chaining: continue from a prior response instead of
+// resending the full conversation history.
+let follow_up = CreateResponseRequest::new("gpt-4o-mini", "And in French?")
+    .previous_response_id(response.id);
+client.responses().create(follow_up).await?;
+# Ok(())
+# }
+```
+
+Streaming uses the same `EventStream` as chat, but yields a tagged union of
+~12 typed events (`Created`, `OutputTextDelta`, `Completed`, `Failed`, ...)
+instead of homogeneous delta chunks; unrecognized event types deserialize to
+`ResponseStreamEvent::Unknown` rather than erroring. `Failed`/`Incomplete` are
+typed `Ok` variants, not stream errors — inspect the variant to detect them.
+See `examples/responses.rs` for a full streaming example, and
+`client.responses().input_items(id).list_all(None)` for paginating the items
+that produced a response.
 
 ### Other resources
 
@@ -270,12 +302,14 @@ while let Some(event) = session.recv().await? {
 OPENAI_API_KEY=sk-... cargo run --example chat
 OPENAI_API_KEY=sk-... cargo run --example chat-streaming
 OPENAI_API_KEY=sk-... cargo run --example tool-calling
+OPENAI_API_KEY=sk-... cargo run --example responses
 ```
 
 ## Scope
 
 v0.2 ports the full core client surface of `openai-python`: chat (incl.
-multimodal content parts), embeddings, models, moderations, legacy
+multimodal content parts), the Responses API (incl. streaming, background
+mode, `input_items` pagination), embeddings, models, moderations, legacy
 completions, images (generate), files, audio (speech/transcriptions), batches,
 resumable uploads, fine-tuning jobs, vector stores, assistants (beta v2),
 webhook signature verification, Azure OpenAI mode, realtime WebSockets,
@@ -284,8 +318,13 @@ retries, streaming, and cursor pagination.
 Deliberately simplified: assistants streaming runs and the fully-typed
 realtime event surface are not modeled (events are `serde_json::Value` with
 typed constructors); deep polymorphic fields (graders, chunking filters,
-step details) are `serde_json::Value`. For untyped endpoints use the
-`client.get::<serde_json::Value>(...)` / `client.post(...)` escape hatch.
+step details) are `serde_json::Value`. Responses API v1 covers
+create/retrieve/delete/cancel/streaming/`input_items`, with the built-in
+tools beyond `web_search`/`file_search`/`code_interpreter`, the `compact()`
+and `input_tokens.count()` endpoints, the `parse()` structured-output
+wrapper, and the Responses-over-WebSocket connection left as future work. For
+untyped endpoints use the `client.get::<serde_json::Value>(...)` /
+`client.post(...)` escape hatch.
 
 ## License
 

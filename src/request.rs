@@ -260,6 +260,19 @@ impl Client {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
+    /// Execute a request expected to return an empty body (e.g. a `DELETE`
+    /// with `Accept: */*`), discarding any response bytes.
+    pub(crate) async fn execute_no_content(
+        &self,
+        method: Method,
+        path: &str,
+        options: RequestOptions,
+    ) -> Result<(), OpenAIError> {
+        let response = self.execute_raw(method, path, options).await?;
+        response.bytes().await?;
+        Ok(())
+    }
+
     /// Execute a request and return the raw response bytes (e.g. audio).
     pub(crate) async fn execute_bytes(
         &self,

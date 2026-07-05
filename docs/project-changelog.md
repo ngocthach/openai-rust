@@ -1,5 +1,16 @@
 # Project Changelog
 
+## v0.3.0 — 2026-07-05
+
+- **Added** the Responses API (`/v1/responses`) as a new `client.responses()` resource: `create`/`create_stream`, `retrieve`/`retrieve_stream` (background-mode resumable streaming via `starting_after`), `delete`, `cancel`, and `input_items().list()/list_all()` cursor pagination.
+- **Added** typed request/response surface in `src/types/responses/`: `CreateResponseRequest` builder (`text`/`reasoning`/`include`/`truncation`/`previous_response_id`/`background`/...), `Input`/`InputItem` (message, function_call, function_call_output, reasoning, item_reference — other item types preserved via `Other(Value)`), `Tool`/`ToolChoice` (function fully typed; `web_search`/`file_search`/`code_interpreter` thinly typed; other built-ins via `Other(Value)`), `Response`/`OutputItem` with `output_text()`/`function_calls()` helpers.
+- **Added** `ResponseStreamEvent`: ~12 typed streaming event variants (`Created`, `InProgress`, `OutputTextDelta`, `FunctionCallArgumentsDelta`, `Completed`, `Failed`, `Incomplete`, ...) plus a forward-compatible `Unknown` catch-all for the ~40 event types not modeled. `Failed`/`Incomplete` are typed `Ok` variants, not stream errors, since their error detail nests under `response.error` rather than the top-level `{"error":...}` shape the SSE decoder already intercepts.
+- **Added** `execute_no_content` helper in `request.rs` for the empty-body `DELETE /responses/{id}` response (additive-only; no other resource's request path changed).
+- **Added** `examples/responses.rs`, README "Responses API" section, and a new `tests/responses-tests.rs` (9 wiremock integration tests: create, function-tool round-trip, streaming happy/unknown/failed paths, retrieve, delete, cancel, `input_items` pagination).
+- **Not ported** (v1 scope, noted for future work): `compact()`, `input_tokens.count()`, the `parse()` typed structured-output convenience wrapper, and the Responses-over-WebSocket connection class.
+
+Verification: 156 tests passing (123 baseline + 23 new unit + 10 new integration), clippy clean (`-D warnings`).
+
 ## Unreleased — crate rename + final findings round (2026-07-04)
 
 - **Renamed** crate `openai-rust` → **`openai-compat`** (the crates.io name `openai-rust` is taken); library path is now `openai_compat::`. All sources, tests, examples, and README updated.

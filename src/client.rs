@@ -16,6 +16,7 @@ use crate::resources::fine_tuning::FineTuning;
 use crate::resources::images::Images;
 use crate::resources::models::Models;
 use crate::resources::moderations::Moderations;
+use crate::resources::responses::Responses;
 use crate::resources::uploads::Uploads;
 use crate::resources::vector_stores::VectorStores;
 
@@ -150,6 +151,11 @@ impl Client {
     /// `.messages()` and `.runs()`.
     pub fn threads(&self) -> Threads {
         Threads::new(self.clone())
+    }
+
+    /// The Responses API resource: `client.responses()`.
+    pub fn responses(&self) -> Responses {
+        Responses::new(self.clone())
     }
 
     /// Open a realtime WebSocket session for `model`, using this client's

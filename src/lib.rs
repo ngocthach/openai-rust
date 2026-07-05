@@ -43,4 +43,7 @@ pub use types::chat::{
     MessageContent, Stop, StreamOptions,
 };
 pub use types::common::{FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage};
+pub use types::responses::{
+    CreateResponseRequest, Input, InputItem, Reasoning, Response, ResponseStreamEvent,
+};
 pub use webhooks::{WebhookEvent, WebhookHeaders, Webhooks};

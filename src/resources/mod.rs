@@ -12,5 +12,6 @@ pub mod fine_tuning;
 pub mod images;
 pub mod models;
 pub mod moderations;
+pub mod responses;
 pub mod uploads;
 pub mod vector_stores;

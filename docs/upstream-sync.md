@@ -10,7 +10,7 @@ process for absorbing upstream changes.
 |---|---|
 | openai-python version | **v2.44.0** |
 | commit | `6d9262d5c666a1e4d47f63178db907ba3087ac5d` (2026-06-24) |
-| ported | 2026-07-04, openai-compat v0.2.0 |
+| ported | 2026-07-04, openai-compat v0.2.0 (Responses API added 2026-07-05, v0.3.0) |
 
 **Update this table every time a sync lands.**
 
@@ -24,12 +24,15 @@ process for absorbing upstream changes.
 | `src/streaming.rs` | `_streaming.py` | SSE parsing changes, new sentinel handling |
 | `src/pagination.rs` | `pagination.py` | new page shapes (e.g. `next` cursor variants) |
 | `src/types/*`, `src/resources/*` | `types/`, `resources/`, **`api.md`** | new endpoints, new params, changed fields |
+| `src/types/responses/*`, `src/resources/responses.rs` | `types/responses/`, `resources/responses/` | new stream event types, new tool types, `compact`/`input_tokens.count`/`parse` (not yet ported) |
 | `src/webhooks.rs` | `resources/webhooks.py` | signature scheme changes |
 | `src/azure.rs` + config/request wiring | `lib/azure.py` | deployments endpoint list, auth, URL rules |
 | `src/realtime.rs` | `resources/realtime/realtime.py` | URL, headers, event envelope |
 
-Not ported (intentional): responses API, evals, containers, videos, skills,
-assistants streaming runs, fully-typed realtime events, resumable-upload
+Not ported (intentional): Responses API `compact()`/`input_tokens.count()`/
+`parse()`/WebSocket connection (core create/retrieve/delete/cancel/streaming
+IS ported, see table above), evals, containers, videos, skills, assistants
+streaming runs, fully-typed realtime events, resumable-upload
 helpers beyond the REST calls, sync client.
 
 ## Sync process

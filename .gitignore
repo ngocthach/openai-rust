@@ -29,4 +29,7 @@ target
 
 .env
 .env.local
+.envrc
 plans/
+# Gemini CLI settings (contains user-specific config)
+.gemini/
