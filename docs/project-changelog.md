@@ -1,5 +1,14 @@
 # Project Changelog
 
+## Unreleased — CI/doc hardening (2026-07-11)
+
+- **Added** `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` steps to `.github/workflows/rust.yml`, so the "clippy clean" claim in every prior release entry is now enforced by CI instead of only checked manually before publish.
+- **Fixed** `cargo fmt --check` violations across 22 src/test/example files (pure formatting, no behavior change) so CI starts green.
+- **Fixed** README install snippet still pinned `openai-compat = "0.2"` after the v0.3.0 release.
+- **Fixed** `docs/development-roadmap.md` still listing the Responses API under "Future (unscheduled)" after it shipped in v0.3.0; added the missing "Phase 3" entry.
+
+No crate code behavior changed; no version bump or republish.
+
 ## v0.3.0 — 2026-07-05
 
 - **Added** the Responses API (`/v1/responses`) as a new `client.responses()` resource: `create`/`create_stream`, `retrieve`/`retrieve_stream` (background-mode resumable streaming via `starting_after`), `delete`, `cancel`, and `input_items().list()/list_all()` cursor pagination.

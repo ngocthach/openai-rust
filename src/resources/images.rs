@@ -26,7 +26,11 @@ impl Images {
     ) -> Result<ImagesResponse, OpenAIError> {
         let body = serde_json::to_value(&request)?;
         self.client
-            .execute(Method::POST, "/images/generations", RequestOptions::json(body))
+            .execute(
+                Method::POST,
+                "/images/generations",
+                RequestOptions::json(body),
+            )
             .await
     }
 }

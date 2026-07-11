@@ -59,7 +59,8 @@ pub(crate) fn calculate_retry_timeout(
     }
 
     let nb_retries = nb_retries.min(1000);
-    let sleep_seconds = (INITIAL_RETRY_DELAY * 2.0_f64.powi(nb_retries as i32)).min(MAX_RETRY_DELAY);
+    let sleep_seconds =
+        (INITIAL_RETRY_DELAY * 2.0_f64.powi(nb_retries as i32)).min(MAX_RETRY_DELAY);
 
     // Jitter: 0.75x..1.0x of the computed delay.
     let jitter = 1.0 - 0.25 * rand01;
@@ -91,11 +92,20 @@ mod tests {
 
     #[test]
     fn retry_after_seconds_and_floats() {
-        assert_eq!(parse_retry_after(&headers(&[("retry-after", "2")])), Some(2.0));
-        assert_eq!(parse_retry_after(&headers(&[("retry-after", "0.75")])), Some(0.75));
+        assert_eq!(
+            parse_retry_after(&headers(&[("retry-after", "2")])),
+            Some(2.0)
+        );
+        assert_eq!(
+            parse_retry_after(&headers(&[("retry-after", "0.75")])),
+            Some(0.75)
+        );
         // HTTP-date form unsupported -> None
         assert_eq!(
-            parse_retry_after(&headers(&[("retry-after", "Fri, 04 Jul 2026 00:00:00 GMT")])),
+            parse_retry_after(&headers(&[(
+                "retry-after",
+                "Fri, 04 Jul 2026 00:00:00 GMT"
+            )])),
             None
         );
         assert_eq!(parse_retry_after(&HeaderMap::new()), None);
@@ -121,12 +131,30 @@ mod tests {
     #[test]
     fn backoff_doubles_and_caps() {
         // rand01 = 0 -> jitter factor 1.0 (no jitter)
-        assert_eq!(calculate_retry_timeout(0, None, 0.0), Duration::from_secs_f64(0.5));
-        assert_eq!(calculate_retry_timeout(1, None, 0.0), Duration::from_secs_f64(1.0));
-        assert_eq!(calculate_retry_timeout(2, None, 0.0), Duration::from_secs_f64(2.0));
-        assert_eq!(calculate_retry_timeout(3, None, 0.0), Duration::from_secs_f64(4.0));
-        assert_eq!(calculate_retry_timeout(4, None, 0.0), Duration::from_secs_f64(8.0));
-        assert_eq!(calculate_retry_timeout(10, None, 0.0), Duration::from_secs_f64(8.0));
+        assert_eq!(
+            calculate_retry_timeout(0, None, 0.0),
+            Duration::from_secs_f64(0.5)
+        );
+        assert_eq!(
+            calculate_retry_timeout(1, None, 0.0),
+            Duration::from_secs_f64(1.0)
+        );
+        assert_eq!(
+            calculate_retry_timeout(2, None, 0.0),
+            Duration::from_secs_f64(2.0)
+        );
+        assert_eq!(
+            calculate_retry_timeout(3, None, 0.0),
+            Duration::from_secs_f64(4.0)
+        );
+        assert_eq!(
+            calculate_retry_timeout(4, None, 0.0),
+            Duration::from_secs_f64(8.0)
+        );
+        assert_eq!(
+            calculate_retry_timeout(10, None, 0.0),
+            Duration::from_secs_f64(8.0)
+        );
     }
 
     #[test]

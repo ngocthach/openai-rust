@@ -45,7 +45,9 @@ async fn create_non_streaming() {
     Mock::given(method("POST"))
         .and(path("/v1/responses"))
         .and(body_partial_json(json!({"model": "gpt-5", "input": "hi"})))
-        .respond_with(ResponseTemplate::new(200).set_body_json(response_body("resp_1", "completed")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(response_body("resp_1", "completed")),
+        )
         .expect(1)
         .mount(&server)
         .await;
@@ -77,20 +79,21 @@ async fn create_with_function_tool_and_output() {
     }]);
     Mock::given(method("POST"))
         .and(path("/v1/responses"))
-        .and(body_partial_json(json!({"tools": [{"type": "function", "name": "get_weather"}]})))
+        .and(body_partial_json(
+            json!({"tools": [{"type": "function", "name": "get_weather"}]}),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(body))
         .expect(1)
         .mount(&server)
         .await;
 
     let client = client_for(&server);
-    let request = CreateResponseRequest::new("gpt-5", "weather in Hanoi?").tools(vec![
-        Tool::function(
+    let request =
+        CreateResponseRequest::new("gpt-5", "weather in Hanoi?").tools(vec![Tool::function(
             "get_weather",
             "Get current weather",
             json!({"type": "object"}),
-        ),
-    ]);
+        )]);
     let response = client.responses().create(request).await.unwrap();
     let calls = response.function_calls();
     assert_eq!(calls.len(), 1);
@@ -141,7 +144,11 @@ async fn create_streaming_ordered_events() {
     assert_eq!(events, 5);
     assert_eq!(text, "Hello");
     assert!(saw_completed);
-    assert_eq!(last_sequence_number, Some(5), "resumable streaming needs the last sequence_number");
+    assert_eq!(
+        last_sequence_number,
+        Some(5),
+        "resumable streaming needs the last sequence_number"
+    );
 }
 
 #[tokio::test]
@@ -167,7 +174,10 @@ async fn stream_unknown_event_tolerated() {
     let first = stream.next().await.unwrap().unwrap();
     assert!(matches!(first, ResponseStreamEvent::Unknown));
     let second = stream.next().await.unwrap().unwrap();
-    assert!(matches!(second, ResponseStreamEvent::OutputTextDelta { .. }));
+    assert!(matches!(
+        second,
+        ResponseStreamEvent::OutputTextDelta { .. }
+    ));
     assert!(stream.next().await.is_none());
 }
 
@@ -243,20 +253,26 @@ async fn retrieve_sends_include_query() {
     Mock::given(method("GET"))
         .and(path("/v1/responses/resp_1"))
         .and(query_param("include[]", "message.output_text.logprobs"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(response_body("resp_1", "completed")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(response_body("resp_1", "completed")),
+        )
         .expect(1)
         .mount(&server)
         .await;
 
     let client = client_for(&server);
-    let params = openai_compat::resources::responses::RetrieveParams::new()
-        .include(vec![openai_compat::types::responses::ResponseIncludable::MessageOutputTextLogprobs]);
+    let params = openai_compat::resources::responses::RetrieveParams::new().include(vec![
+        openai_compat::types::responses::ResponseIncludable::MessageOutputTextLogprobs,
+    ]);
     let response = client
         .responses()
         .retrieve("resp_1", Some(params))
         .await
         .unwrap();
-    assert_eq!(response.status, Some(openai_compat::types::responses::ResponseStatus::Completed));
+    assert_eq!(
+        response.status,
+        Some(openai_compat::types::responses::ResponseStatus::Completed)
+    );
 }
 
 #[tokio::test]
@@ -278,14 +294,19 @@ async fn cancel_returns_response() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/responses/resp_1/cancel"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(response_body("resp_1", "cancelled")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(response_body("resp_1", "cancelled")),
+        )
         .expect(1)
         .mount(&server)
         .await;
 
     let client = client_for(&server);
     let response = client.responses().cancel("resp_1").await.unwrap();
-    assert_eq!(response.status, Some(openai_compat::types::responses::ResponseStatus::Cancelled));
+    assert_eq!(
+        response.status,
+        Some(openai_compat::types::responses::ResponseStatus::Cancelled)
+    );
 }
 
 #[tokio::test]
@@ -315,8 +336,7 @@ async fn input_items_pagination_follows_cursor() {
         .await;
 
     let client = client_for(&server);
-    let params =
-        openai_compat::resources::responses::InputItemsListParams::new().limit(1);
+    let params = openai_compat::resources::responses::InputItemsListParams::new().limit(1);
     let items = client
         .responses()
         .input_items("resp_1")

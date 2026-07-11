@@ -15,7 +15,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = ChatCompletionRequest::new(
         "gpt-4o-mini",
-        vec![Message::user("Count from 1 to 10 slowly, one number per line.")],
+        vec![Message::user(
+            "Count from 1 to 10 slowly, one number per line.",
+        )],
     );
 
     let mut stream = client.chat().completions().create_stream(request).await?;

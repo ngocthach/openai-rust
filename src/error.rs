@@ -145,7 +145,10 @@ impl OpenAIError {
                 serde_json::from_value::<ApiErrorDetail>(error).ok()
             })
             .filter(|d| {
-                d.message.is_some() || d.error_type.is_some() || d.param.is_some() || d.code.is_some()
+                d.message.is_some()
+                    || d.error_type.is_some()
+                    || d.param.is_some()
+                    || d.code.is_some()
             });
 
         // Mirror `_base_client._make_status_error_from_response`: JSON bodies
@@ -176,10 +179,16 @@ mod tests {
     fn maps_statuses_to_kinds() {
         assert_eq!(ApiErrorKind::from_status(400), ApiErrorKind::BadRequest);
         assert_eq!(ApiErrorKind::from_status(401), ApiErrorKind::Authentication);
-        assert_eq!(ApiErrorKind::from_status(403), ApiErrorKind::PermissionDenied);
+        assert_eq!(
+            ApiErrorKind::from_status(403),
+            ApiErrorKind::PermissionDenied
+        );
         assert_eq!(ApiErrorKind::from_status(404), ApiErrorKind::NotFound);
         assert_eq!(ApiErrorKind::from_status(409), ApiErrorKind::Conflict);
-        assert_eq!(ApiErrorKind::from_status(422), ApiErrorKind::UnprocessableEntity);
+        assert_eq!(
+            ApiErrorKind::from_status(422),
+            ApiErrorKind::UnprocessableEntity
+        );
         assert_eq!(ApiErrorKind::from_status(429), ApiErrorKind::RateLimit);
         assert_eq!(ApiErrorKind::from_status(500), ApiErrorKind::InternalServer);
         assert_eq!(ApiErrorKind::from_status(503), ApiErrorKind::InternalServer);
@@ -190,7 +199,9 @@ mod tests {
     fn parses_error_body() {
         let body = r#"{"error": {"message": "Invalid API key", "type": "invalid_request_error", "param": null, "code": "invalid_api_key"}}"#;
         let err = OpenAIError::from_response(401, Some("req_123".into()), body);
-        let OpenAIError::Api(api) = err else { panic!("expected Api error") };
+        let OpenAIError::Api(api) = err else {
+            panic!("expected Api error")
+        };
         assert_eq!(api.status, 401);
         assert_eq!(api.kind, ApiErrorKind::Authentication);
         assert_eq!(api.request_id.as_deref(), Some("req_123"));
@@ -213,7 +224,11 @@ mod tests {
         let OpenAIError::Api(api) = err else { panic!() };
         assert_eq!(api.message, "Error code: 502");
 
-        let err = OpenAIError::from_response(429, None, r#"{"error": {"message": "slow down", "code": 42}}"#);
+        let err = OpenAIError::from_response(
+            429,
+            None,
+            r#"{"error": {"message": "slow down", "code": 42}}"#,
+        );
         let OpenAIError::Api(api) = err else { panic!() };
         assert_eq!(api.detail.unwrap().code.as_deref(), Some("42"));
     }

@@ -275,20 +275,24 @@ async fn file_create_sends_chunking_strategy_and_lists() {
     let files = client.vector_stores().files("vs_123");
 
     let created = files
-        .create(VectorStoreFileCreateParams::new("file-1").chunking_strategy(json!({
-            "type": "static",
-            "static": {"max_chunk_size_tokens": 800, "chunk_overlap_tokens": 400}
-        })))
+        .create(
+            VectorStoreFileCreateParams::new("file-1").chunking_strategy(json!({
+                "type": "static",
+                "static": {"max_chunk_size_tokens": 800, "chunk_overlap_tokens": 400}
+            })),
+        )
         .await
         .unwrap();
     assert_eq!(created.status, VectorStoreFileStatus::InProgress);
     assert_eq!(created.vector_store_id, "vs_123");
 
     let page = files
-        .list(Some(openai_compat::types::vector_stores::VectorStoreFileListParams {
-            filter: Some("completed".into()),
-            ..Default::default()
-        }))
+        .list(Some(
+            openai_compat::types::vector_stores::VectorStoreFileListParams {
+                filter: Some("completed".into()),
+                ..Default::default()
+            },
+        ))
         .await
         .unwrap();
     assert_eq!(page.data.len(), 1);
@@ -301,7 +305,9 @@ async fn file_batch_create_and_cancel() {
     Mock::given(method("POST"))
         .and(path("/v1/vector_stores/vs_123/file_batches"))
         .and(header("openai-beta", "assistants=v2"))
-        .and(body_partial_json(json!({ "file_ids": ["file-1", "file-2"] })))
+        .and(body_partial_json(
+            json!({ "file_ids": ["file-1", "file-2"] }),
+        ))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id": "vsfb_1",
             "object": "vector_store.files_batch",

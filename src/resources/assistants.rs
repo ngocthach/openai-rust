@@ -69,13 +69,14 @@ impl Assistants {
     }
 
     /// Create an assistant.
-    pub async fn create(
-        &self,
-        params: AssistantCreateParams,
-    ) -> Result<Assistant, OpenAIError> {
+    pub async fn create(&self, params: AssistantCreateParams) -> Result<Assistant, OpenAIError> {
         let body = serde_json::to_value(&params)?;
         self.client
-            .execute(Method::POST, "/assistants", with_beta(RequestOptions::json(body)))
+            .execute(
+                Method::POST,
+                "/assistants",
+                with_beta(RequestOptions::json(body)),
+            )
             .await
     }
 
@@ -118,13 +119,14 @@ impl Assistants {
     }
 
     /// List assistants (a single page).
-    pub async fn list(
-        &self,
-        params: Option<ListParams>,
-    ) -> Result<List<Assistant>, OpenAIError> {
+    pub async fn list(&self, params: Option<ListParams>) -> Result<List<Assistant>, OpenAIError> {
         let query = params.unwrap_or_default().to_query();
         self.client
-            .execute(Method::GET, "/assistants", with_beta(RequestOptions::query(query)))
+            .execute(
+                Method::GET,
+                "/assistants",
+                with_beta(RequestOptions::query(query)),
+            )
             .await
     }
 
@@ -167,7 +169,11 @@ impl Threads {
     pub async fn create(&self, params: ThreadCreateParams) -> Result<Thread, OpenAIError> {
         let body = serde_json::to_value(&params)?;
         self.client
-            .execute(Method::POST, "/threads", with_beta(RequestOptions::json(body)))
+            .execute(
+                Method::POST,
+                "/threads",
+                with_beta(RequestOptions::json(body)),
+            )
             .await
     }
 
@@ -312,7 +318,12 @@ impl ThreadMessages {
         params: Option<ListParams>,
     ) -> Result<Vec<ThreadMessage>, OpenAIError> {
         let query = params.unwrap_or_default().to_query();
-        paginate_all_beta(&self.client, &format!("/threads/{thread_id}/messages"), query).await
+        paginate_all_beta(
+            &self.client,
+            &format!("/threads/{thread_id}/messages"),
+            query,
+        )
+        .await
     }
 }
 

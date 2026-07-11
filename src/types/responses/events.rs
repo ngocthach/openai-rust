@@ -134,21 +134,51 @@ impl ResponseStreamEvent {
     /// [`ResponseStreamEvent::Unknown`] (payload not captured).
     pub fn sequence_number(&self) -> Option<u64> {
         match self {
-            Self::Created { sequence_number, .. }
-            | Self::InProgress { sequence_number, .. }
-            | Self::Queued { sequence_number, .. }
-            | Self::Completed { sequence_number, .. }
-            | Self::Failed { sequence_number, .. }
-            | Self::Incomplete { sequence_number, .. }
-            | Self::OutputItemAdded { sequence_number, .. }
-            | Self::OutputItemDone { sequence_number, .. }
-            | Self::ContentPartAdded { sequence_number, .. }
-            | Self::ContentPartDone { sequence_number, .. }
-            | Self::OutputTextDelta { sequence_number, .. }
-            | Self::OutputTextDone { sequence_number, .. }
-            | Self::FunctionCallArgumentsDelta { sequence_number, .. }
-            | Self::FunctionCallArgumentsDone { sequence_number, .. }
-            | Self::Error { sequence_number, .. } => Some(*sequence_number),
+            Self::Created {
+                sequence_number, ..
+            }
+            | Self::InProgress {
+                sequence_number, ..
+            }
+            | Self::Queued {
+                sequence_number, ..
+            }
+            | Self::Completed {
+                sequence_number, ..
+            }
+            | Self::Failed {
+                sequence_number, ..
+            }
+            | Self::Incomplete {
+                sequence_number, ..
+            }
+            | Self::OutputItemAdded {
+                sequence_number, ..
+            }
+            | Self::OutputItemDone {
+                sequence_number, ..
+            }
+            | Self::ContentPartAdded {
+                sequence_number, ..
+            }
+            | Self::ContentPartDone {
+                sequence_number, ..
+            }
+            | Self::OutputTextDelta {
+                sequence_number, ..
+            }
+            | Self::OutputTextDone {
+                sequence_number, ..
+            }
+            | Self::FunctionCallArgumentsDelta {
+                sequence_number, ..
+            }
+            | Self::FunctionCallArgumentsDone {
+                sequence_number, ..
+            }
+            | Self::Error {
+                sequence_number, ..
+            } => Some(*sequence_number),
             Self::Unknown => None,
         }
     }

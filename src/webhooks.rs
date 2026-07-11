@@ -199,8 +199,7 @@ impl Webhooks {
             let sig_bytes = sig.as_bytes();
             // Guard length before the constant-time compare; unequal lengths
             // can never match.
-            sig_bytes.len() == expected_bytes.len()
-                && expected_bytes.ct_eq(sig_bytes).into()
+            sig_bytes.len() == expected_bytes.len() && expected_bytes.ct_eq(sig_bytes).into()
         });
 
         if matched {
@@ -265,7 +264,8 @@ mod tests {
 
     const SECRET: &str = "my-webhook-secret";
     const ID: &str = "wh_123";
-    const PAYLOAD: &[u8] = br#"{"id":"evt_1","type":"response.completed","created_at":100,"data":{"foo":"bar"}}"#;
+    const PAYLOAD: &[u8] =
+        br#"{"id":"evt_1","type":"response.completed","created_at":100,"data":{"foo":"bar"}}"#;
 
     #[test]
     fn accepts_valid_signature() {
@@ -319,7 +319,8 @@ mod tests {
         let sig = sign(SECRET.as_bytes(), ID, ts, PAYLOAD);
         let wh = Webhooks::new(SECRET).unwrap();
         let headers = WebhookHeaders::new(ID, ts, format!("v1,{sig}"));
-        let tampered = br#"{"id":"evt_1","type":"response.completed","created_at":100,"data":{"foo":"BAZ"}}"#;
+        let tampered =
+            br#"{"id":"evt_1","type":"response.completed","created_at":100,"data":{"foo":"BAZ"}}"#;
         assert_eq!(
             wh.verify_signature(tampered, &headers, DEFAULT_TOLERANCE_SECS, 1000),
             Err(WebhookVerificationError::SignatureMismatch)

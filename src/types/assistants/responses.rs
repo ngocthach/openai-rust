@@ -324,4 +324,3 @@ pub struct MessageDeleted {
     #[serde(default)]
     pub object: String,
 }
-

@@ -24,11 +24,7 @@ impl Files {
 
     /// Upload a file for the given purpose (e.g. `"fine-tune"`, `"batch"`,
     /// `"assistants"`, `"user_data"`).
-    pub async fn create(
-        &self,
-        file: FileUpload,
-        purpose: &str,
-    ) -> Result<FileObject, OpenAIError> {
+    pub async fn create(&self, file: FileUpload, purpose: &str) -> Result<FileObject, OpenAIError> {
         let fields = vec![
             MultipartField::File {
                 name: "file".into(),

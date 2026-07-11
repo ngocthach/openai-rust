@@ -36,7 +36,10 @@ async fn azure_with_deployment_uses_api_key_and_api_version() {
     let completion = client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap();
     assert_eq!(completion.content(), Some("hi"));
@@ -156,7 +159,10 @@ async fn azure_ad_token_uses_bearer_authorization() {
     client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap();
 

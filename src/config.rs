@@ -209,8 +209,7 @@ impl ClientBuilder {
             })
             .filter(|t| !t.trim().is_empty());
 
-        let (api_key, base_url, default_query, azure) = if let Some(endpoint) =
-            self.azure_endpoint
+        let (api_key, base_url, default_query, azure) = if let Some(endpoint) = self.azure_endpoint
         {
             let api_version = self
                 .azure_api_version

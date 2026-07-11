@@ -180,7 +180,9 @@ async fn thread_message_run_flow_and_status_parsing() {
 async fn submit_tool_outputs_sends_body_and_beta_header() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/v1/threads/thread_abc/runs/run_1/submit_tool_outputs"))
+        .and(path(
+            "/v1/threads/thread_abc/runs/run_1/submit_tool_outputs",
+        ))
         .and(header("openai-beta", "assistants=v2"))
         .and(body_partial_json(json!({
             "tool_outputs": [

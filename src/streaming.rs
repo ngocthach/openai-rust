@@ -191,9 +191,11 @@ impl<T: DeserializeOwned> EventStream<T> {
         }
         let value: serde_json::Value = match serde_json::from_str(&event.data) {
             Ok(value) => value,
-            Err(err) => return Some(Err(OpenAIError::Stream(format!(
-                "invalid JSON in stream: {err}"
-            )))),
+            Err(err) => {
+                return Some(Err(OpenAIError::Stream(format!(
+                    "invalid JSON in stream: {err}"
+                ))))
+            }
         };
         if let Some(error) = value.get("error").filter(|e| !e.is_null()) {
             let message = error

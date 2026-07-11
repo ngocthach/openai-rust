@@ -32,16 +32,17 @@ async fn spawn_test_server(header_tx: oneshot::Sender<ObservedHeaders>) -> Strin
     tokio::spawn(async move {
         let (stream, _peer) = listener.accept().await.unwrap();
 
-        let callback = move |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
-            let header = |name: &str| {
-                req.headers()
-                    .get(name)
-                    .and_then(|v| v.to_str().ok())
-                    .map(str::to_owned)
+        let callback =
+            move |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
+                let header = |name: &str| {
+                    req.headers()
+                        .get(name)
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_owned)
+                };
+                let _ = header_tx.send((header("Authorization"), header("OpenAI-Beta")));
+                Ok(response)
             };
-            let _ = header_tx.send((header("Authorization"), header("OpenAI-Beta")));
-            Ok(response)
-        };
 
         let mut ws = accept_hdr_async(stream, callback).await.unwrap();
 
@@ -190,7 +191,10 @@ fn event_conversation_item_create_shape() {
 
 #[test]
 fn event_response_create_shape() {
-    assert_eq!(events::response_create(), json!({ "type": "response.create" }));
+    assert_eq!(
+        events::response_create(),
+        json!({ "type": "response.create" })
+    );
 }
 
 #[test]

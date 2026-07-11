@@ -79,8 +79,8 @@ fn build_multipart(fields: &[MultipartField]) -> Result<reqwest::multipart::Form
                 bytes,
                 content_type,
             } => {
-                let mut part = reqwest::multipart::Part::bytes(bytes.clone())
-                    .file_name(filename.clone());
+                let mut part =
+                    reqwest::multipart::Part::bytes(bytes.clone()).file_name(filename.clone());
                 if let Some(ct) = content_type {
                     part = part.mime_str(ct).map_err(|e| {
                         OpenAIError::Config(format!("invalid content type {ct:?}: {e}"))
@@ -108,8 +108,8 @@ impl Client {
             value.set_sensitive(true);
             headers.insert(HeaderName::from_static(name), value);
         } else {
-            let mut auth = HeaderValue::from_str(&format!("Bearer {}", config.api_key))
-                .map_err(|_| {
+            let mut auth =
+                HeaderValue::from_str(&format!("Bearer {}", config.api_key)).map_err(|_| {
                     OpenAIError::Config("API key contains invalid header characters".into())
                 })?;
             auth.set_sensitive(true);
@@ -241,7 +241,11 @@ impl Client {
                     }
 
                     let body = response.text().await.unwrap_or_default();
-                    return Err(OpenAIError::from_response(status.as_u16(), request_id, &body));
+                    return Err(OpenAIError::from_response(
+                        status.as_u16(),
+                        request_id,
+                        &body,
+                    ));
                 }
             }
         }

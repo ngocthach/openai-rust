@@ -42,7 +42,11 @@ impl ChatCompletions {
         request.stream = None;
         let body = serde_json::to_value(&request)?;
         self.client
-            .execute(Method::POST, "/chat/completions", RequestOptions::json(body))
+            .execute(
+                Method::POST,
+                "/chat/completions",
+                RequestOptions::json(body),
+            )
             .await
     }
 
@@ -55,7 +59,11 @@ impl ChatCompletions {
         let body = serde_json::to_value(&request)?;
         let response = self
             .client
-            .execute_raw(Method::POST, "/chat/completions", RequestOptions::json(body))
+            .execute_raw(
+                Method::POST,
+                "/chat/completions",
+                RequestOptions::json(body),
+            )
             .await?;
         Ok(EventStream::new(response))
     }

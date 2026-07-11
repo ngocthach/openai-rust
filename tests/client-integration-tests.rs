@@ -60,8 +60,7 @@ async fn chat_completion_sends_auth_and_parses_response() {
         .chat()
         .completions()
         .create(
-            ChatCompletionRequest::new("gpt-4o", vec![Message::user("Say hello")])
-                .temperature(0.5),
+            ChatCompletionRequest::new("gpt-4o", vec![Message::user("Say hello")]).temperature(0.5),
         )
         .await
         .unwrap();
@@ -94,7 +93,10 @@ async fn non_retryable_error_is_mapped_and_not_retried() {
     let err = client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap_err();
 
@@ -104,10 +106,7 @@ async fn non_retryable_error_is_mapped_and_not_retried() {
     assert_eq!(api.status, 401);
     assert_eq!(api.kind, ApiErrorKind::Authentication);
     assert_eq!(api.request_id.as_deref(), Some("req_abc"));
-    assert_eq!(
-        api.detail.unwrap().code.as_deref(),
-        Some("invalid_api_key")
-    );
+    assert_eq!(api.detail.unwrap().code.as_deref(), Some("invalid_api_key"));
 }
 
 /// Responds 500 twice, then 200 — verifies the retry loop recovers.
@@ -147,7 +146,10 @@ async fn retryable_error_is_retried_until_success() {
     let completion = client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap();
     assert_eq!(completion.content(), Some("Hello!"));
@@ -171,7 +173,10 @@ async fn retries_exhausted_surfaces_last_error() {
     let err = client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap_err();
 
@@ -199,7 +204,10 @@ async fn x_should_retry_false_prevents_retry_of_500() {
     let err = client
         .chat()
         .completions()
-        .create(ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]))
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
         .await
         .unwrap_err();
     assert!(matches!(err, OpenAIError::Api(api) if api.status == 500));
@@ -255,9 +263,7 @@ async fn stream_error_event_surfaces_as_error() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_raw(sse_body, "text/event-stream"),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_body, "text/event-stream"))
         .mount(&server)
         .await;
 
@@ -290,9 +296,7 @@ async fn truncated_stream_without_done_terminates_cleanly() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/chat/completions"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_raw(sse_body, "text/event-stream"),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_raw(sse_body, "text/event-stream"))
         .mount(&server)
         .await;
 
@@ -449,7 +453,12 @@ async fn file_upload_sends_multipart_and_content_returns_bytes() {
         .iter()
         .find(|r| r.url.path() == "/v1/files")
         .unwrap();
-    let content_type = upload.headers.get("content-type").unwrap().to_str().unwrap();
+    let content_type = upload
+        .headers
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(content_type.starts_with("multipart/form-data"));
     let body = String::from_utf8_lossy(&upload.body);
     assert!(body.contains("name=\"file\""));
@@ -466,9 +475,7 @@ async fn audio_speech_returns_binary() {
         .and(body_partial_json(json!({
             "model": "tts-1", "input": "hello", "voice": "alloy"
         })))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_bytes(vec![0x49, 0x44, 0x33, 0x04]),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0x49, 0x44, 0x33, 0x04]))
         .mount(&server)
         .await;
 

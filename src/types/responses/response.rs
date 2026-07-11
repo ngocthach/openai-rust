@@ -152,7 +152,10 @@ impl Response {
         for item in &self.output {
             if let OutputItem::Known(KnownOutputItem::Message { content, .. }) = item {
                 for part in content {
-                    if let OutputContent::OutputText { text: part_text, .. } = part {
+                    if let OutputContent::OutputText {
+                        text: part_text, ..
+                    } = part
+                    {
                         text.push_str(part_text);
                     }
                 }

@@ -41,7 +41,7 @@ Full API documentation: [docs.rs/openai-compat](https://docs.rs/openai-compat)
 
 ```toml
 [dependencies]
-openai-compat = "0.2"
+openai-compat = "0.3"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"   # only needed for streaming
 ```

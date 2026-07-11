@@ -154,14 +154,8 @@ mod tests {
     #[test]
     fn rewrite_path_unchanged_for_non_deployment_endpoint() {
         // Not in DEPLOYMENTS_ENDPOINTS -> unchanged even with a model.
-        assert_eq!(
-            rewrite_path("/models", false, Some("gpt-4o")),
-            "/models"
-        );
-        assert_eq!(
-            rewrite_path("/files", false, Some("gpt-4o")),
-            "/files"
-        );
+        assert_eq!(rewrite_path("/models", false, Some("gpt-4o")), "/models");
+        assert_eq!(rewrite_path("/files", false, Some("gpt-4o")), "/files");
     }
 
     #[test]

@@ -9,7 +9,9 @@ use crate::error::OpenAIError;
 use crate::pagination::List;
 use crate::request::RequestOptions;
 use crate::streaming::EventStream;
-use crate::types::responses::{CreateResponseRequest, Response, ResponseIncludable, ResponseItem, ResponseStreamEvent};
+use crate::types::responses::{
+    CreateResponseRequest, Response, ResponseIncludable, ResponseItem, ResponseStreamEvent,
+};
 
 /// Query parameters for `retrieve`.
 #[derive(Debug, Clone, Default)]
@@ -41,7 +43,10 @@ impl RetrieveParams {
             }
         }
         if let Some(include_obfuscation) = self.include_obfuscation {
-            query.push(("include_obfuscation".into(), include_obfuscation.to_string()));
+            query.push((
+                "include_obfuscation".into(),
+                include_obfuscation.to_string(),
+            ));
         }
         query
     }
@@ -111,7 +116,10 @@ impl Responses {
     }
 
     /// Create a response and wait for the full result.
-    pub async fn create(&self, mut request: CreateResponseRequest) -> Result<Response, OpenAIError> {
+    pub async fn create(
+        &self,
+        mut request: CreateResponseRequest,
+    ) -> Result<Response, OpenAIError> {
         request.stream = None;
         let body = serde_json::to_value(&request)?;
         self.client

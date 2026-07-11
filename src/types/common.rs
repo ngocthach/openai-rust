@@ -73,7 +73,9 @@ pub enum ResponseFormat {
     JsonObject,
     /// Structured outputs: pass the full `json_schema` object
     /// (`{"name": ..., "schema": {...}, "strict": ...}`).
-    JsonSchema { json_schema: serde_json::Value },
+    JsonSchema {
+        json_schema: serde_json::Value,
+    },
 }
 
 impl ResponseFormat {
@@ -174,7 +176,8 @@ mod tests {
             serde_json::to_value(ResponseFormat::JsonObject).unwrap(),
             serde_json::json!({"type": "json_object"})
         );
-        let schema = ResponseFormat::json_schema("out", serde_json::json!({"type": "object"}), true);
+        let schema =
+            ResponseFormat::json_schema("out", serde_json::json!({"type": "object"}), true);
         assert_eq!(
             serde_json::to_value(schema).unwrap(),
             serde_json::json!({

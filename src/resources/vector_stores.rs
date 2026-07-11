@@ -119,10 +119,7 @@ impl VectorStores {
     }
 
     /// Delete a vector store.
-    pub async fn delete(
-        &self,
-        vector_store_id: &str,
-    ) -> Result<VectorStoreDeleted, OpenAIError> {
+    pub async fn delete(&self, vector_store_id: &str) -> Result<VectorStoreDeleted, OpenAIError> {
         self.client
             .execute(
                 Method::DELETE,
@@ -153,10 +150,7 @@ impl VectorStores {
     }
 
     /// File batches sub-resource bound to a vector store id.
-    pub fn file_batches(
-        &self,
-        vector_store_id: impl Into<String>,
-    ) -> VectorStoreFileBatches {
+    pub fn file_batches(&self, vector_store_id: impl Into<String>) -> VectorStoreFileBatches {
         VectorStoreFileBatches::new(self.client.clone(), vector_store_id.into())
     }
 }
@@ -218,10 +212,7 @@ impl VectorStoreFiles {
     }
 
     /// Remove a file from the vector store.
-    pub async fn delete(
-        &self,
-        file_id: &str,
-    ) -> Result<VectorStoreFileDeleted, OpenAIError> {
+    pub async fn delete(&self, file_id: &str) -> Result<VectorStoreFileDeleted, OpenAIError> {
         self.client
             .execute(
                 Method::DELETE,
@@ -256,10 +247,7 @@ impl VectorStoreFiles {
     }
 
     /// Retrieve the parsed content of a vector store file.
-    pub async fn content(
-        &self,
-        file_id: &str,
-    ) -> Result<List<FileContentResponse>, OpenAIError> {
+    pub async fn content(&self, file_id: &str) -> Result<List<FileContentResponse>, OpenAIError> {
         self.client
             .execute(
                 Method::GET,
@@ -300,10 +288,7 @@ impl VectorStoreFileBatches {
     }
 
     /// Retrieve a file batch.
-    pub async fn retrieve(
-        &self,
-        batch_id: &str,
-    ) -> Result<VectorStoreFileBatch, OpenAIError> {
+    pub async fn retrieve(&self, batch_id: &str) -> Result<VectorStoreFileBatch, OpenAIError> {
         self.client
             .execute(
                 Method::GET,
@@ -314,10 +299,7 @@ impl VectorStoreFileBatches {
     }
 
     /// Cancel a file batch (POST, no body).
-    pub async fn cancel(
-        &self,
-        batch_id: &str,
-    ) -> Result<VectorStoreFileBatch, OpenAIError> {
+    pub async fn cancel(&self, batch_id: &str) -> Result<VectorStoreFileBatch, OpenAIError> {
         self.client
             .execute(
                 Method::POST,

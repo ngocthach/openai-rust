@@ -19,7 +19,10 @@ impl Embeddings {
     }
 
     /// Create embeddings for the given input.
-    pub async fn create(&self, request: EmbeddingRequest) -> Result<EmbeddingResponse, OpenAIError> {
+    pub async fn create(
+        &self,
+        request: EmbeddingRequest,
+    ) -> Result<EmbeddingResponse, OpenAIError> {
         let body = serde_json::to_value(&request)?;
         self.client
             .execute(Method::POST, "/embeddings", RequestOptions::json(body))

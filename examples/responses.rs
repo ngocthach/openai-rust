@@ -35,10 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // terminal event. A failed response is a typed `Ok(Failed{..})`, not a
     // stream `Err` — callers must check the variant themselves.
     println!("\n--- streaming ---");
-    let request = CreateResponseRequest::new(
-        "gpt-4o-mini",
-        "Count from 1 to 5, one number per line.",
-    );
+    let request =
+        CreateResponseRequest::new("gpt-4o-mini", "Count from 1 to 5, one number per line.");
     let mut stream = client.responses().create_stream(request).await?;
     while let Some(event) = stream.next().await {
         match event? {

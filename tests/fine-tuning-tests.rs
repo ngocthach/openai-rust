@@ -95,16 +95,16 @@ async fn create_job_serializes_dpo_method() {
         .await;
 
     let client = client_for(&server);
-    let request = FineTuningJobRequest::new("gpt-4o", "file-train").method(
-        FineTuningMethod::dpo(DpoMethod {
+    let request = FineTuningJobRequest::new("gpt-4o", "file-train").method(FineTuningMethod::dpo(
+        DpoMethod {
             hyperparameters: Some(DpoHyperparameters {
                 batch_size: None,
                 beta: Some(AutoOr::Value(0.1)),
                 learning_rate_multiplier: None,
                 n_epochs: Some(AutoOr::Auto),
             }),
-        }),
-    );
+        },
+    ));
 
     let job = client.fine_tuning().jobs().create(request).await.unwrap();
     assert_eq!(job.id, "ftjob-dpo");
