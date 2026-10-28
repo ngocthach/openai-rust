@@ -20,6 +20,7 @@ pub use request::{
 };
 pub use response::{
     CompactedResponse, IncompleteDetails, InputTokenCount, KnownOutputItem, OutputContent,
-    OutputItem, Response, ResponseError, ResponseItem, ResponseStatus, ResponseUsage,
+    OutputContentPart, OutputItem, Response, ResponseError, ResponseItem, ResponseStatus,
+    ResponseUsage,
 };
 pub use tools::{FunctionTool, Tool, ToolChoice};

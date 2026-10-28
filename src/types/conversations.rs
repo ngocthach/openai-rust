@@ -36,10 +36,11 @@ pub struct ConversationDeleted {
 /// tool-call and content shapes; the stable envelope (`id`, `type`) is typed
 /// and every other field is kept in `rest` so nothing is dropped.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ConversationItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[serde(default, rename = "type")]
+    #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
     pub item_type: String,
     #[serde(flatten)]
     pub rest: Map<String, Value>,
@@ -188,5 +189,15 @@ mod tests {
         assert_eq!(item.id(), Some("msg_1"));
         assert_eq!(item.item_type, "message");
         assert_eq!(serde_json::to_value(&item).unwrap(), raw);
+    }
+
+    #[test]
+    fn item_without_type_does_not_serialize_empty_type() {
+        let item: ConversationItem =
+            serde_json::from_value(serde_json::json!({"id": "x_1"})).unwrap();
+        assert_eq!(
+            serde_json::to_value(&item).unwrap(),
+            serde_json::json!({"id": "x_1"})
+        );
     }
 }

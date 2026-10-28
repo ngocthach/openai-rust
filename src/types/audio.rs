@@ -24,6 +24,12 @@ impl From<&str> for SpeechVoice {
     }
 }
 
+impl From<&String> for SpeechVoice {
+    fn from(name: &String) -> Self {
+        Self::Named(name.clone())
+    }
+}
+
 impl From<String> for SpeechVoice {
     fn from(name: String) -> Self {
         Self::Named(name)
@@ -192,6 +198,13 @@ mod tests {
         let plain: Transcription =
             serde_json::from_value(serde_json::json!({"text": "hi"})).unwrap();
         assert!(plain.languages.is_none());
+    }
+
+    #[test]
+    fn speech_voice_accepts_string_reference() {
+        let voice = String::from("nova");
+        let request = SpeechRequest::new("tts-1", "hi", &voice);
+        assert_eq!(serde_json::to_value(&request).unwrap()["voice"], "nova");
     }
 
     #[test]

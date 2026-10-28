@@ -377,7 +377,14 @@ async fn compact_posts_and_returns_compacted_response() {
         .unwrap();
     assert_eq!(compacted.id, "resp_c1");
     assert_eq!(compacted.object, "response.compaction");
-    assert_eq!(compacted.output.len(), 2);
+    assert_eq!(
+        serde_json::to_value(&compacted.output).unwrap(),
+        json!([
+            {"type": "message", "id": "msg_1", "role": "user",
+             "content": [{"type": "input_text", "text": "hello"}]},
+            {"type": "compaction", "id": "cmp_1", "encrypted_content": "abc"}
+        ])
+    );
     assert_eq!(compacted.usage.total_tokens, 12);
 }
 

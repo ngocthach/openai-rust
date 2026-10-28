@@ -20,7 +20,8 @@ pub enum ResponseStatus {
     Queued,
     Incomplete,
     /// Forward-compatibility: a status this crate doesn't know yet must not
-    /// fail deserialization of the whole [`Response`].
+    /// fail deserialization of the whole [`Response`]. The original string is
+    /// not retained, so this serializes as `"unknown"`.
     #[serde(other)]
     Unknown,
 }
@@ -72,12 +73,19 @@ pub enum OutputContent {
     Refusal {
         refusal: String,
     },
-    /// Forward-compatibility: an unrecognized part type keeps the enclosing
-    /// message typed instead of dropping it into [`OutputItem::Other`]. The
-    /// part's payload is not retained, so don't replay a parsed
-    /// `Response.output` as request input.
-    #[serde(other)]
-    Unknown,
+}
+
+/// One element of an output message's `content`, mirroring the
+/// `OutputItem` pattern: recognized parts are typed, anything else (e.g.
+/// `input_text`, `input_image`, `output_audio`) falls into
+/// [`OutputContentPart::Other`] with its payload intact, so the enclosing
+/// message stays typed and a parsed `Response.output` re-serializes without
+/// data loss (object key order is normalized through `serde_json::Value`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum OutputContentPart {
+    Known(OutputContent),
+    Other(serde_json::Value),
 }
 
 /// The typed output item variants this crate models directly. Anything else
@@ -92,7 +100,7 @@ pub enum KnownOutputItem {
         role: String,
         /// The API may send `null` here; it reads as no parts.
         #[serde(default, deserialize_with = "null_as_default")]
-        content: Vec<OutputContent>,
+        content: Vec<OutputContentPart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
     },
@@ -174,9 +182,10 @@ impl Response {
         for item in &self.output {
             if let OutputItem::Known(KnownOutputItem::Message { content, .. }) = item {
                 for part in content {
-                    if let OutputContent::OutputText {
-                        text: part_text, ..
-                    } = part
+                    if let OutputContentPart::Known(OutputContent::OutputText {
+                        text: part_text,
+                        ..
+                    }) = part
                     {
                         text.push_str(part_text);
                     }
@@ -365,7 +374,8 @@ mod tests {
                 assert_eq!(content.len(), 2);
                 assert!(matches!(
                     &content[0],
-                    OutputContent::OutputText { text, .. } if text.is_empty()
+                    OutputContentPart::Known(OutputContent::OutputText { text, .. })
+                        if text.is_empty()
                 ));
             }
             other => panic!("expected typed message, got {other:?}"),
@@ -394,11 +404,31 @@ mod tests {
         let response: Response = serde_json::from_value(json).unwrap();
         match &response.output[0] {
             OutputItem::Known(KnownOutputItem::Message { content, .. }) => {
-                assert!(matches!(content[0], OutputContent::Unknown));
+                assert!(matches!(content[0], OutputContentPart::Other(_)));
             }
             other => panic!("expected typed message, got {other:?}"),
         }
         assert_eq!(response.output_text(), "still here");
+    }
+
+    #[test]
+    fn unknown_content_part_round_trips_exactly() {
+        let output = serde_json::json!([{
+            "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+            "content": [
+                {"type": "output_audio", "data": "AAEC", "transcript": "hi"},
+                {"type": "output_text", "text": "x", "annotations": []}
+            ]
+        }]);
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5", "output": output
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            response.output[0],
+            OutputItem::Known(KnownOutputItem::Message { .. })
+        ));
+        assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
     }
 
     #[test]

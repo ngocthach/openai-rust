@@ -807,8 +807,14 @@ async fn transcription_sends_array_params_as_bracketed_multipart_fields() {
     let body = String::from_utf8_lossy(&requests[0].body);
     assert_eq!(body.matches("name=\"keywords[]\"").count(), 2);
     assert_eq!(body.matches("name=\"languages[]\"").count(), 2);
-    for value in ["Acme", "Zed", "fr", "en"] {
-        assert!(body.contains(value), "missing {value}");
+    for (field, value) in [
+        ("keywords[]", "Acme"),
+        ("keywords[]", "Zed"),
+        ("languages[]", "fr"),
+        ("languages[]", "en"),
+    ] {
+        let part = format!("name=\"{field}\"\r\n\r\n{value}\r\n");
+        assert!(body.contains(&part), "missing {field}={value}");
     }
 }
 

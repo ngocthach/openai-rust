@@ -237,9 +237,11 @@ impl Client {
             // derived from the body's `model` when none is pinned. All other
             // endpoints go straight under `{endpoint}/openai`.
             // The pinned deployment is operator-supplied and used verbatim.
-            // Only requests that carry a body (JSON or multipart, e.g. audio
-            // transcriptions) are routed, so a body-less GET on a deployments
-            // path — such as listing stored chat completions — is left untouched.
+            // Deliberate divergence from upstream, which bakes the pinned
+            // deployment into `base_url` for every request: here only requests
+            // that carry a body (JSON or multipart, e.g. audio transcriptions)
+            // are routed, so a body-less GET on a deployments path — such as
+            // listing stored chat completions — is left untouched.
             let has_body = !matches!(options.body, Payload::None);
             if let Some(deployment) = azure.deployment.as_deref() {
                 if has_body && crate::azure::DEPLOYMENTS_ENDPOINTS.contains(&path) {
