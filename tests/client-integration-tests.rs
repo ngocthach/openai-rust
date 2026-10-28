@@ -2,6 +2,7 @@
 //! mapping, retry behavior, streaming, and pagination.
 
 use futures_util::StreamExt;
+use openai_compat::types::audio::TranscriptionRequest;
 use openai_compat::types::embeddings::{EmbeddingRequest, EmbeddingVector};
 use openai_compat::types::files::FileUpload;
 use openai_compat::{
@@ -777,4 +778,36 @@ async fn path_parameters_are_percent_encoded_and_dot_segments_rejected() {
     let err = client.models().retrieve("..").await.unwrap_err();
     assert!(matches!(err, OpenAIError::Config(_)));
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn transcription_sends_array_params_as_bracketed_multipart_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/audio/transcriptions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "text": "bonjour", "languages": [{"code": "fr"}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let request = TranscriptionRequest::new("gpt-4o-transcribe")
+        .keywords(["Acme", "Zed"])
+        .languages(["fr", "en"]);
+    let transcription = client
+        .audio()
+        .transcriptions(FileUpload::new("a.wav", vec![0u8, 1, 2]), request)
+        .await
+        .unwrap();
+    assert_eq!(transcription.languages.unwrap()[0].code, "fr");
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8_lossy(&requests[0].body);
+    assert_eq!(body.matches("name=\"keywords[]\"").count(), 2);
+    assert_eq!(body.matches("name=\"languages[]\"").count(), 2);
+    for value in ["Acme", "Zed", "fr", "en"] {
+        assert!(body.contains(value), "missing {value}");
+    }
 }

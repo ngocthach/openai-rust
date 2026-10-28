@@ -9,6 +9,25 @@ use super::config::{Reasoning, ResponseIncludable, ResponseTextConfig, Truncatio
 use super::input::Input;
 use super::tools::{Tool, ToolChoice};
 
+/// Prompt-cache options for a Responses request (`gpt-5.6` and later).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ResponsesPromptCacheOptions {
+    /// `"implicit"` (default) or `"explicit"`; `explicit` disables the
+    /// automatic breakpoint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// Minimum cache lifetime; currently only `"30m"` (the default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+    /// Prepare the cache without generating output (forces `generate` off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prewarm: Option<bool>,
+    /// Response to compare against when diagnosing prompt cache reuse;
+    /// diagnostics appear in `Response.extra["prompt_cache_diagnostics"]`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comparison_response_id: Option<String>,
+}
+
 /// Request body for `POST /responses`.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateResponseRequest {
@@ -51,6 +70,8 @@ pub struct CreateResponseRequest {
     pub background: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_options: Option<ResponsesPromptCacheOptions>,
     /// Escape hatch: additional request parameters flattened into the JSON
     /// body, for provider-specific or newly-added params not yet typed.
     #[serde(flatten, skip_serializing_if = "HashMap::is_empty")]
@@ -150,6 +171,11 @@ impl CreateResponseRequest {
         self
     }
 
+    pub fn prompt_cache_options(mut self, options: ResponsesPromptCacheOptions) -> Self {
+        self.prompt_cache_options = Some(options);
+        self
+    }
+
     /// Set an arbitrary extra parameter on the request body (escape hatch
     /// for provider-specific or newly-added params). Do not use this to set
     /// `stream`: `extra` is flattened after the typed fields, so a
@@ -171,6 +197,35 @@ mod tests {
         let request = CreateResponseRequest::new("gpt-5", "hi");
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json, serde_json::json!({"model": "gpt-5", "input": "hi"}));
+    }
+
+    #[test]
+    fn prompt_cache_options_serialize_all_fields_and_omit_none() {
+        let request = CreateResponseRequest::new("gpt-5", "hi").prompt_cache_options(
+            ResponsesPromptCacheOptions {
+                mode: Some("explicit".into()),
+                ttl: Some("30m".into()),
+                prewarm: Some(true),
+                comparison_response_id: Some("resp_0".into()),
+            },
+        );
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json["prompt_cache_options"],
+            serde_json::json!({
+                "mode": "explicit",
+                "ttl": "30m",
+                "prewarm": true,
+                "comparison_response_id": "resp_0"
+            })
+        );
+
+        let empty = CreateResponseRequest::new("gpt-5", "hi")
+            .prompt_cache_options(ResponsesPromptCacheOptions::default());
+        assert_eq!(
+            serde_json::to_value(&empty).unwrap()["prompt_cache_options"],
+            serde_json::json!({})
+        );
     }
 
     #[test]

@@ -29,7 +29,22 @@ pub enum InputContent {
         filename: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         file_data: Option<String>,
+        /// Detail level for the file. Upstream default `auto` renders at high
+        /// quality on newer models, which consumes more tokens; pass
+        /// [`FileDetail::Low`] to cap cost.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<FileDetail>,
     },
+}
+
+/// Detail level of an `input_file` content part.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum FileDetail {
+    Auto,
+    Low,
+    High,
 }
 
 impl InputContent {
@@ -210,6 +225,25 @@ impl Input {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn input_file_detail_serializes_and_is_omitted_when_none() {
+        let with_detail = InputContent::InputFile {
+            file_id: Some("file-1".into()),
+            file_url: None,
+            filename: None,
+            file_data: None,
+            detail: Some(FileDetail::Low),
+        };
+        assert_eq!(
+            serde_json::to_value(&with_detail).unwrap(),
+            serde_json::json!({"type": "input_file", "file_id": "file-1", "detail": "low"})
+        );
+        let without: InputContent =
+            serde_json::from_value(serde_json::json!({"type": "input_file", "file_id": "f"}))
+                .unwrap();
+        assert!(!serde_json::to_string(&without).unwrap().contains("detail"));
+    }
 
     #[test]
     fn string_input_serializes_as_string() {

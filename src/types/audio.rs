@@ -97,6 +97,12 @@ pub struct TranscriptionRequest {
     /// v0.1 parses the default `json` shape (`{ "text": ... }`).
     pub response_format: Option<String>,
     pub temperature: Option<f64>,
+    /// Words or phrases to guide transcription; sent as repeated
+    /// `keywords[]` multipart fields.
+    pub keywords: Option<Vec<String>>,
+    /// Possible input languages (ISO-639-1); sent as repeated `languages[]`
+    /// multipart fields.
+    pub languages: Option<Vec<String>>,
 }
 
 impl TranscriptionRequest {
@@ -107,7 +113,27 @@ impl TranscriptionRequest {
             prompt: None,
             response_format: None,
             temperature: None,
+            keywords: None,
+            languages: None,
         }
+    }
+
+    pub fn keywords<I, S>(mut self, keywords: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.keywords = Some(keywords.into_iter().map(Into::into).collect());
+        self
+    }
+
+    pub fn languages<I, S>(mut self, languages: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.languages = Some(languages.into_iter().map(Into::into).collect());
+        self
     }
 
     pub fn language(mut self, language: impl Into<String>) -> Self {
@@ -138,11 +164,35 @@ impl TranscriptionRequest {
 #[non_exhaustive]
 pub struct Transcription {
     pub text: String,
+    /// Languages detected in the audio, when the model reports them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<Vec<TranscriptionLanguage>>,
+}
+
+/// A language detected in transcribed audio.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TranscriptionLanguage {
+    pub code: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transcription_languages_parse_and_default_to_none() {
+        let t: Transcription = serde_json::from_value(
+            serde_json::json!({"text": "hi", "languages": [{"code": "en"}, {"code": "fr"}]}),
+        )
+        .unwrap();
+        let codes: Vec<_> = t.languages.unwrap().into_iter().map(|l| l.code).collect();
+        assert_eq!(codes, ["en", "fr"]);
+
+        let plain: Transcription =
+            serde_json::from_value(serde_json::json!({"text": "hi"})).unwrap();
+        assert!(plain.languages.is_none());
+    }
 
     #[test]
     fn speech_voice_serializes_as_string_or_id_object() {

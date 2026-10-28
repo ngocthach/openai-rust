@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Reasoning effort for reasoning models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReasoningEffort {
     None,
     Minimal,
@@ -15,6 +16,7 @@ pub enum ReasoningEffort {
     Medium,
     High,
     Xhigh,
+    Max,
 }
 
 /// Reasoning configuration for reasoning models (`o1`/`o3`/`gpt-5`-class).
@@ -25,14 +27,39 @@ pub struct Reasoning {
     /// `"auto" | "concise" | "detailed"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// Which prior reasoning to keep in context:
+    /// `"auto" | "current_turn" | "all_turns"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<String>,
+    /// Reasoning mode: `"standard" | "pro"` (open set upstream).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 impl Reasoning {
     pub fn effort(effort: ReasoningEffort) -> Self {
         Self {
             effort: Some(effort),
-            summary: None,
+            ..Self::default()
         }
+    }
+
+    /// `"auto" | "concise" | "detailed"`.
+    pub fn summary(mut self, summary: impl Into<String>) -> Self {
+        self.summary = Some(summary.into());
+        self
+    }
+
+    /// `"auto" | "current_turn" | "all_turns"`.
+    pub fn context(mut self, context: impl Into<String>) -> Self {
+        self.context = Some(context.into());
+        self
+    }
+
+    /// `"standard" | "pro"`.
+    pub fn mode(mut self, mode: impl Into<String>) -> Self {
+        self.mode = Some(mode.into());
+        self
     }
 }
 
@@ -137,6 +164,31 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&reasoning).unwrap(),
             serde_json::json!({"effort": "medium"})
+        );
+    }
+
+    #[test]
+    fn reasoning_effort_max_serializes() {
+        assert_eq!(
+            serde_json::to_value(ReasoningEffort::Max).unwrap(),
+            serde_json::json!("max")
+        );
+    }
+
+    #[test]
+    fn reasoning_setters_serialize_context_and_mode() {
+        let reasoning = Reasoning::effort(ReasoningEffort::High)
+            .summary("auto")
+            .context("all_turns")
+            .mode("pro");
+        assert_eq!(
+            serde_json::to_value(&reasoning).unwrap(),
+            serde_json::json!({
+                "effort": "high",
+                "summary": "auto",
+                "context": "all_turns",
+                "mode": "pro"
+            })
         );
     }
 

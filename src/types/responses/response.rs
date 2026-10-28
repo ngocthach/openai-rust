@@ -159,6 +159,10 @@ pub struct Response {
     pub temperature: Option<f64>,
     #[serde(default)]
     pub top_p: Option<f64>,
+    /// Fields not modeled above (e.g. `prompt_cache_diagnostics`), kept so
+    /// they stay readable and survive re-serialization.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Response {
@@ -209,6 +213,25 @@ impl HasId for ResponseItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn untyped_fields_land_in_extra_without_duplicating_typed_keys() {
+        let mut body = sample_response_json();
+        body["prompt_cache_diagnostics"] = serde_json::json!({"reused_tokens": 128});
+        let response: Response = serde_json::from_value(body).unwrap();
+        assert_eq!(
+            response.extra["prompt_cache_diagnostics"]["reused_tokens"],
+            128
+        );
+        assert!(!response.extra.contains_key("id"));
+        assert!(!response.extra.contains_key("model"));
+
+        let text = serde_json::to_string(&response).unwrap();
+        assert_eq!(text.matches("\"id\":\"resp_123\"").count(), 1);
+        assert_eq!(text.matches("\"prompt_cache_diagnostics\"").count(), 1);
+        let back: Response = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.extra, response.extra);
+    }
 
     fn sample_response_json() -> serde_json::Value {
         serde_json::json!({

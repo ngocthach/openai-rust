@@ -13,8 +13,8 @@ pub use config::{
     Truncation,
 };
 pub use events::ResponseStreamEvent;
-pub use input::{EasyContent, Input, InputContent, InputItem};
-pub use request::CreateResponseRequest;
+pub use input::{EasyContent, FileDetail, Input, InputContent, InputItem};
+pub use request::{CreateResponseRequest, ResponsesPromptCacheOptions};
 pub use response::{
     IncompleteDetails, KnownOutputItem, OutputContent, OutputItem, Response, ResponseError,
     ResponseItem, ResponseStatus, ResponseUsage,

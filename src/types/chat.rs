@@ -176,6 +176,18 @@ pub struct StreamOptions {
     pub include_usage: Option<bool>,
 }
 
+/// Prompt-cache options for a chat completion request (`gpt-5.6` and later).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ChatPromptCacheOptions {
+    /// `"implicit"` (default) or `"explicit"`; `explicit` disables the
+    /// automatic breakpoint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
+    /// Minimum cache lifetime; currently only `"30m"` (the default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
+}
+
 /// Request body for `POST /chat/completions`, mirroring the parameter list in
 /// `resources/chat/completions/completions.py::create`.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -238,6 +250,8 @@ pub struct ChatCompletionRequest {
     /// Audio output configuration (`{"voice": ..., "format": ...}`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_cache_options: Option<ChatPromptCacheOptions>,
     /// Escape hatch: additional request parameters flattened into the JSON
     /// body, for provider-specific or newly-added params not yet typed.
     #[serde(flatten, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -295,6 +309,11 @@ impl ChatCompletionRequest {
 
     pub fn logprobs(mut self, logprobs: bool) -> Self {
         self.logprobs = Some(logprobs);
+        self
+    }
+
+    pub fn prompt_cache_options(mut self, options: ChatPromptCacheOptions) -> Self {
+        self.prompt_cache_options = Some(options);
         self
     }
 
@@ -517,6 +536,27 @@ pub struct ChoiceDelta {
     pub refusal: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ChoiceDeltaToolCall>>,
+    /// Partial audio output; the final audio update carries only
+    /// `expires_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<ChunkDeltaAudio>,
+}
+
+/// A partial audio response inside a streamed delta.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ChunkDeltaAudio {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Base64-encoded audio bytes in the requested format.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
+    /// Unix timestamp (seconds) after which the audio is no longer
+    /// available for multi-turn use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<String>,
 }
 
 /// One choice inside a streamed chunk.
@@ -590,6 +630,45 @@ mod tests {
             serde_json::to_value(&message).unwrap(),
             serde_json::json!({"role": "user", "content": "hi"})
         );
+    }
+
+    #[test]
+    fn prompt_cache_options_emit_only_chat_fields() {
+        let request = ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")])
+            .prompt_cache_options(ChatPromptCacheOptions {
+                mode: Some("explicit".into()),
+                ttl: Some("30m".into()),
+            });
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json["prompt_cache_options"],
+            serde_json::json!({"mode": "explicit", "ttl": "30m"})
+        );
+        let text = json.to_string();
+        assert!(!text.contains("prewarm"));
+        assert!(!text.contains("comparison_response_id"));
+
+        let empty = ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")]);
+        assert!(serde_json::to_value(&empty)
+            .unwrap()
+            .get("prompt_cache_options")
+            .is_none());
+    }
+
+    #[test]
+    fn chunk_delta_audio_parses() {
+        let chunk: ChatCompletionChunk = serde_json::from_value(serde_json::json!({
+            "id": "c1", "object": "chat.completion.chunk", "created": 1, "model": "gpt-4o-audio",
+            "choices": [{"index": 0, "delta": {"audio": {
+                "id": "audio_1", "data": "AAEC", "transcript": "hi", "expires_at": 1700000000
+            }}}]
+        }))
+        .unwrap();
+        let audio = chunk.choices[0].delta.audio.as_ref().unwrap();
+        assert_eq!(audio.id.as_deref(), Some("audio_1"));
+        assert_eq!(audio.data.as_deref(), Some("AAEC"));
+        assert_eq!(audio.transcript.as_deref(), Some("hi"));
+        assert_eq!(audio.expires_at, Some(1_700_000_000));
     }
 
     #[test]
