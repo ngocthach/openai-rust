@@ -6,6 +6,9 @@
 //! config/request construction (base URL, `api-version` query, auth header, and
 //! deployment path rewriting).
 
+use crate::error::OpenAIError;
+use crate::request::encode_path_segment;
+
 /// Endpoints that are addressed as `/deployments/{deployment}{path}` on Azure,
 /// mirroring `_deployments_endpoints` in `lib/azure.py`.
 pub const DEPLOYMENTS_ENDPOINTS: [&str; 8] = [
@@ -81,13 +84,23 @@ pub fn azure_base_url(endpoint: &str, deployment: Option<&str>) -> String {
 /// - Python only rewrites when `json_data` is a mapping; that is captured by
 ///   `model_from_body` being `None` whenever there is no JSON object body or no
 ///   `model` field.
-pub fn rewrite_path(path: &str, has_deployment: bool, model_from_body: Option<&str>) -> String {
+///
+/// The model is percent-encoded as one path segment (and `.`/`..` rejected), so
+/// a hostile `model` value cannot alter the request path.
+pub fn rewrite_path(
+    path: &str,
+    has_deployment: bool,
+    model_from_body: Option<&str>,
+) -> Result<String, OpenAIError> {
     if !has_deployment && DEPLOYMENTS_ENDPOINTS.contains(&path) {
         if let Some(model) = model_from_body {
-            return format!("/deployments/{model}{path}");
+            return Ok(format!(
+                "/deployments/{}{path}",
+                encode_path_segment(model)?
+            ));
         }
     }
-    path.to_string()
+    Ok(path.to_string())
 }
 
 #[cfg(test)]
@@ -125,11 +138,11 @@ mod tests {
     #[test]
     fn rewrite_path_adds_deployment_for_known_endpoint_with_model() {
         assert_eq!(
-            rewrite_path("/chat/completions", false, Some("gpt-4o")),
+            rewrite_path("/chat/completions", false, Some("gpt-4o")).unwrap(),
             "/deployments/gpt-4o/chat/completions"
         );
         assert_eq!(
-            rewrite_path("/embeddings", false, Some("text-embedding-3-small")),
+            rewrite_path("/embeddings", false, Some("text-embedding-3-small")).unwrap(),
             "/deployments/text-embedding-3-small/embeddings"
         );
     }
@@ -138,7 +151,7 @@ mod tests {
     fn rewrite_path_unchanged_when_deployment_configured() {
         // A configured deployment already carries /deployments in the base URL.
         assert_eq!(
-            rewrite_path("/chat/completions", true, Some("gpt-4o")),
+            rewrite_path("/chat/completions", true, Some("gpt-4o")).unwrap(),
             "/chat/completions"
         );
     }
@@ -146,7 +159,7 @@ mod tests {
     #[test]
     fn rewrite_path_unchanged_without_model() {
         assert_eq!(
-            rewrite_path("/chat/completions", false, None),
+            rewrite_path("/chat/completions", false, None).unwrap(),
             "/chat/completions"
         );
     }
@@ -154,8 +167,14 @@ mod tests {
     #[test]
     fn rewrite_path_unchanged_for_non_deployment_endpoint() {
         // Not in DEPLOYMENTS_ENDPOINTS -> unchanged even with a model.
-        assert_eq!(rewrite_path("/models", false, Some("gpt-4o")), "/models");
-        assert_eq!(rewrite_path("/files", false, Some("gpt-4o")), "/files");
+        assert_eq!(
+            rewrite_path("/models", false, Some("gpt-4o")).unwrap(),
+            "/models"
+        );
+        assert_eq!(
+            rewrite_path("/files", false, Some("gpt-4o")).unwrap(),
+            "/files"
+        );
     }
 
     #[test]
@@ -177,5 +196,14 @@ mod tests {
         assert_eq!(DEPLOYMENTS_ENDPOINTS.len(), 8);
         assert!(DEPLOYMENTS_ENDPOINTS.contains(&"/audio/speech"));
         assert!(DEPLOYMENTS_ENDPOINTS.contains(&"/images/edits"));
+    }
+
+    #[test]
+    fn rewrite_path_encodes_model() {
+        assert_eq!(
+            rewrite_path("/chat/completions", false, Some("org/model")).unwrap(),
+            "/deployments/org%2Fmodel/chat/completions"
+        );
+        assert!(rewrite_path("/chat/completions", false, Some("..")).is_err());
     }
 }

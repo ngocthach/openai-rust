@@ -68,6 +68,65 @@ impl RequestOptions {
     }
 }
 
+/// Percent-encode `value` for use as a single URL path segment, mirroring
+/// `_utils/_path.py`: everything outside RFC 3986 `pchar` (unreserved plus
+/// `!$&'()*+,;=:@`) is escaped, including `/ ? # %`, so an identifier can never
+/// change the shape of the path or smuggle in a query or fragment. `:` stays
+/// literal so fine-tuned model ids (`ft:gpt-4o:org::id`) are unchanged.
+///
+/// `.` and `..` (literal or percent-encoded) are rejected: servers and proxies
+/// may normalize them into a different resource. An empty value is rejected
+/// too, since `/files/` would address the collection instead of an item.
+pub(crate) fn encode_path_segment(value: &str) -> Result<String, OpenAIError> {
+    if value.is_empty() {
+        return Err(OpenAIError::Config(
+            "path parameter must not be empty".into(),
+        ));
+    }
+    let is_dot_segment = {
+        let mut rest = value;
+        let mut dots = 0;
+        while dots < 3 {
+            if let Some(r) = rest.strip_prefix('.') {
+                rest = r;
+            } else if rest.len() >= 3
+                && rest.is_char_boundary(3)
+                && rest[..3].eq_ignore_ascii_case("%2e")
+            {
+                rest = &rest[3..];
+            } else {
+                break;
+            }
+            dots += 1;
+        }
+        rest.is_empty() && (1..=2).contains(&dots)
+    };
+    if is_dot_segment {
+        return Err(OpenAIError::Config(format!(
+            "path parameter {value:?} is a dot-segment, which is not allowed"
+        )));
+    }
+    let mut out = String::with_capacity(value.len());
+    for &b in value.as_bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    Ok(out)
+}
+
+/// `format!` for URL paths: every argument is percent-encoded as one path
+/// segment via [`encode_path_segment`] and an invalid argument returns early
+/// with `Err(OpenAIError::Config)` from the enclosing function.
+macro_rules! api_path {
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        format!($fmt, $($crate::request::encode_path_segment(AsRef::<str>::as_ref(&$arg))?),*)
+    };
+}
+pub(crate) use api_path;
+
 fn build_multipart(fields: &[MultipartField]) -> Result<reqwest::multipart::Form, OpenAIError> {
     let mut form = reqwest::multipart::Form::new();
     for field in fields {
@@ -91,6 +150,15 @@ fn build_multipart(fields: &[MultipartField]) -> Result<reqwest::multipart::Form
         };
     }
     Ok(form)
+}
+
+/// Message for a redirect-policy error: the policy's own text (target URL
+/// and reason) rather than reqwest's generic wrapper.
+fn redirect_message(err: &reqwest::Error) -> String {
+    use std::error::Error;
+    err.source()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| err.to_string())
 }
 
 impl Client {
@@ -153,8 +221,13 @@ impl Client {
             // `/deployments/{...}` segment — from the pinned deployment, or
             // derived from the body's `model` when none is pinned. All other
             // endpoints go straight under `{endpoint}/openai`.
+            // The pinned deployment is operator-supplied and used verbatim.
+            // Only requests that carry a body (JSON or multipart, e.g. audio
+            // transcriptions) are routed, so a body-less GET on a deployments
+            // path — such as listing stored chat completions — is left untouched.
+            let has_body = !matches!(options.body, Payload::None);
             if let Some(deployment) = azure.deployment.as_deref() {
-                if crate::azure::DEPLOYMENTS_ENDPOINTS.contains(&path) {
+                if has_body && crate::azure::DEPLOYMENTS_ENDPOINTS.contains(&path) {
                     format!("/deployments/{deployment}{path}")
                 } else {
                     path.to_string()
@@ -164,7 +237,7 @@ impl Client {
                     Payload::Json(value) => value.get("model").and_then(|m| m.as_str()),
                     _ => None,
                 };
-                crate::azure::rewrite_path(path, false, model)
+                crate::azure::rewrite_path(path, false, model)?
             }
         } else {
             path.to_string()
@@ -222,6 +295,8 @@ impl Client {
                     }
                     return Err(if err.is_timeout() {
                         OpenAIError::Timeout
+                    } else if err.is_redirect() {
+                        OpenAIError::Redirect(redirect_message(&err))
                     } else {
                         OpenAIError::Connection(err.to_string())
                     });
@@ -327,5 +402,47 @@ impl Client {
     pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, OpenAIError> {
         self.execute(Method::DELETE, path, RequestOptions::default())
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_keeps_pchar_and_fine_tuned_ids() {
+        assert_eq!(
+            encode_path_segment("ft:gpt-4o:org::id").unwrap(),
+            "ft:gpt-4o:org::id"
+        );
+        assert_eq!(
+            encode_path_segment("a-b_c.d~e!$&'()*+,;=:@").unwrap(),
+            "a-b_c.d~e!$&'()*+,;=:@"
+        );
+    }
+
+    #[test]
+    fn encode_escapes_reserved_and_unicode() {
+        assert_eq!(encode_path_segment("org/model").unwrap(), "org%2Fmodel");
+        assert_eq!(encode_path_segment("a?x=1").unwrap(), "a%3Fx=1");
+        assert_eq!(encode_path_segment("a#b").unwrap(), "a%23b");
+        assert_eq!(encode_path_segment("100%").unwrap(), "100%25");
+        assert_eq!(encode_path_segment("a b").unwrap(), "a%20b");
+        assert_eq!(encode_path_segment("é").unwrap(), "%C3%A9");
+        assert_eq!(encode_path_segment("..x").unwrap(), "..x");
+        assert_eq!(encode_path_segment("a/../b").unwrap(), "a%2F..%2Fb");
+    }
+
+    #[test]
+    fn encode_rejects_dot_segments_and_empty() {
+        for bad in ["", ".", "..", "%2e", "%2E%2e", ".%2E", "%2e."] {
+            assert!(
+                matches!(encode_path_segment(bad), Err(OpenAIError::Config(_))),
+                "{bad:?} should be rejected"
+            );
+        }
+        for ok in ["...", "%2e%2e%2e"] {
+            assert!(encode_path_segment(ok).is_ok(), "{ok:?} should be accepted");
+        }
     }
 }

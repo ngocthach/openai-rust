@@ -6,7 +6,7 @@ use reqwest::Method;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::List;
-use crate::request::RequestOptions;
+use crate::request::{api_path, RequestOptions};
 use crate::types::batches::{Batch, BatchCreateParams, BatchListParams};
 
 /// The batches resource.
@@ -33,7 +33,7 @@ impl Batches {
         self.client
             .execute(
                 Method::GET,
-                &format!("/batches/{batch_id}"),
+                &api_path!("/batches/{}", batch_id),
                 RequestOptions::default(),
             )
             .await
@@ -61,7 +61,7 @@ impl Batches {
         self.client
             .execute(
                 Method::POST,
-                &format!("/batches/{batch_id}/cancel"),
+                &api_path!("/batches/{}/cancel", batch_id),
                 RequestOptions::default(),
             )
             .await

@@ -143,6 +143,9 @@ pub enum OpenAIError {
     /// Failed to reach the server.
     #[error("connection error: {0}")]
     Connection(String),
+    /// A redirect was refused (cross-origin, or too many hops). Never retried.
+    #[error("redirect refused: {0}")]
+    Redirect(String),
     /// The request timed out.
     #[error("request timed out")]
     Timeout,

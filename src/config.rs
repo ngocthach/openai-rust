@@ -27,6 +27,72 @@ pub(crate) struct AzureSettings {
     pub deployment: Option<String>,
 }
 
+/// OpenAI data-residency region, selecting a regional API endpoint (see
+/// [`ClientBuilder::data_residency`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DataResidency {
+    /// The default global endpoint, `https://api.openai.com/v1`.
+    Global,
+    /// United States, `https://us.api.openai.com/v1`.
+    Us,
+    /// European Union, `https://eu.api.openai.com/v1`.
+    Eu,
+    /// United Arab Emirates, `https://ae.api.openai.com/v1`.
+    Ae,
+}
+
+impl DataResidency {
+    /// Mirrors `_data_residency.py::_DATA_RESIDENCY_BASE_URLS`.
+    pub(crate) fn base_url(self) -> &'static str {
+        match self {
+            Self::Global => DEFAULT_BASE_URL,
+            Self::Us => "https://us.api.openai.com/v1",
+            Self::Eu => "https://eu.api.openai.com/v1",
+            Self::Ae => "https://ae.api.openai.com/v1",
+        }
+    }
+}
+
+/// Pick the Azure credential, mirroring `lib/azure.py::_resolve_azure_auth`.
+///
+/// `explicit_*` are the raw caller-supplied values; an explicit blank counts
+/// as explicit (and is rejected) rather than silently falling through to the
+/// environment and authenticating as a different principal. The environment is
+/// consulted only when nothing explicit was given, AD token first. There is
+/// deliberately no `OPENAI_API_KEY` fallback: that key belongs to a different
+/// service and must not be sent to an Azure endpoint.
+pub(crate) fn resolve_azure_auth(
+    explicit_key: Option<String>,
+    explicit_token: Option<String>,
+    env_key: Option<String>,
+    env_token: Option<String>,
+) -> Result<AzureAuth, OpenAIError> {
+    let non_blank = |v: Option<String>| v.filter(|v| !v.trim().is_empty());
+    match (explicit_key, explicit_token) {
+        (Some(_), Some(_)) => Err(OpenAIError::Config(
+            "the `api_key` and `azure_ad_token` arguments are mutually exclusive; only one can be passed at a time"
+                .into(),
+        )),
+        (Some(key), None) => match non_blank(Some(key)) {
+            Some(key) => Ok(AzureAuth::ApiKey(key)),
+            None => Err(OpenAIError::Config("Azure `api_key` is empty".into())),
+        },
+        (None, Some(token)) => match non_blank(Some(token)) {
+            Some(token) => Ok(AzureAuth::BearerToken(token)),
+            None => Err(OpenAIError::Config("Azure `azure_ad_token` is empty".into())),
+        },
+        (None, None) => match (non_blank(env_token), non_blank(env_key)) {
+            (Some(token), _) => Ok(AzureAuth::BearerToken(token)),
+            (None, Some(key)) => Ok(AzureAuth::ApiKey(key)),
+            (None, None) => Err(OpenAIError::Config(
+                "missing Azure credentials: pass `api_key`/`azure_ad_token` or set AZURE_OPENAI_API_KEY / AZURE_OPENAI_AD_TOKEN"
+                    .into(),
+            )),
+        },
+    }
+}
+
 /// Resolved client configuration.
 #[derive(Clone)]
 pub struct Config {
@@ -73,6 +139,7 @@ pub struct ClientBuilder {
     azure_api_version: Option<String>,
     azure_deployment: Option<String>,
     azure_ad_token: Option<String>,
+    data_residency: Option<DataResidency>,
 }
 
 impl std::fmt::Debug for ClientBuilder {
@@ -88,6 +155,7 @@ impl std::fmt::Debug for ClientBuilder {
             .field("azure_endpoint", &self.azure_endpoint)
             .field("azure_api_version", &self.azure_api_version)
             .field("azure_deployment", &self.azure_deployment)
+            .field("data_residency", &self.data_residency)
             .field(
                 "azure_ad_token",
                 &self.azure_ad_token.as_ref().map(|_| "[REDACTED]"),
@@ -157,8 +225,10 @@ impl ClientBuilder {
     /// query parameter, authenticated via `api-key` header (or a bearer
     /// token set with [`ClientBuilder::azure_ad_token`]).
     ///
-    /// The API key falls back to the `AZURE_OPENAI_API_KEY` environment
-    /// variable; `api_version` may be empty to use `OPENAI_API_VERSION`.
+    /// Credentials: an explicit `api_key` or `azure_ad_token` (not both)
+    /// wins; only when neither is given do `AZURE_OPENAI_AD_TOKEN` (first) and
+    /// `AZURE_OPENAI_API_KEY` apply. `OPENAI_API_KEY` is never used for Azure.
+    /// `api_version` may be empty to use `OPENAI_API_VERSION`.
     pub fn azure(mut self, endpoint: impl Into<String>, api_version: impl Into<String>) -> Self {
         self.azure_endpoint = Some(endpoint.into());
         let api_version = api_version.into();
@@ -177,37 +247,31 @@ impl ClientBuilder {
     }
 
     /// Authenticate to Azure with an Entra ID (Azure AD) bearer token
-    /// instead of an API key. Falls back to `AZURE_OPENAI_AD_TOKEN`.
+    /// instead of an API key. Falls back to `AZURE_OPENAI_AD_TOKEN` only when
+    /// no explicit credential is set.
     pub fn azure_ad_token(mut self, token: impl Into<String>) -> Self {
         self.azure_ad_token = Some(token.into());
         self
     }
 
+    /// Send requests to a data-residency endpoint
+    /// (`https://{region}.api.openai.com/v1`). Mutually exclusive with
+    /// [`ClientBuilder::base_url`] and Azure (checked by `build`); takes
+    /// precedence over `OPENAI_BASE_URL`.
+    pub fn data_residency(mut self, region: DataResidency) -> Self {
+        self.data_residency = Some(region);
+        self
+    }
+
     /// Resolve environment fallbacks and construct the [`Client`].
     pub fn build(self) -> Result<Client, OpenAIError> {
-        let is_azure = self.azure_endpoint.is_some();
-        let api_key = self
-            .api_key
-            .or_else(|| {
-                if is_azure {
-                    std::env::var("AZURE_OPENAI_API_KEY").ok()
-                } else {
-                    None
-                }
-            })
-            .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-            .filter(|k| !k.trim().is_empty());
-
-        let azure_ad_token = self
-            .azure_ad_token
-            .or_else(|| {
-                if is_azure {
-                    std::env::var("AZURE_OPENAI_AD_TOKEN").ok()
-                } else {
-                    None
-                }
-            })
-            .filter(|t| !t.trim().is_empty());
+        if self.data_residency.is_some()
+            && (self.azure_endpoint.is_some() || self.base_url.is_some())
+        {
+            return Err(OpenAIError::Config(
+                "`data_residency` is mutually exclusive with `base_url` and Azure".into(),
+            ));
+        }
 
         let (api_key, base_url, default_query, azure) = if let Some(endpoint) = self.azure_endpoint
         {
@@ -221,21 +285,21 @@ impl ClientBuilder {
                             .into(),
                     )
                 })?;
-            let auth = match (&azure_ad_token, &api_key) {
-                (Some(token), _) => AzureAuth::BearerToken(token.clone()),
-                (None, Some(key)) => AzureAuth::ApiKey(key.clone()),
-                (None, None) => {
-                    return Err(OpenAIError::Config(
-                        "missing Azure credentials: pass `api_key`/`azure_ad_token` or set AZURE_OPENAI_API_KEY / AZURE_OPENAI_AD_TOKEN"
-                            .into(),
-                    ))
-                }
+            let auth = resolve_azure_auth(
+                self.api_key,
+                self.azure_ad_token,
+                std::env::var("AZURE_OPENAI_API_KEY").ok(),
+                std::env::var("AZURE_OPENAI_AD_TOKEN").ok(),
+            )?;
+            let api_key = match &auth {
+                AzureAuth::ApiKey(key) => key.clone(),
+                AzureAuth::BearerToken(_) => String::new(),
             };
             // Base URL is always `{endpoint}/openai`; any deployment segment
             // is added per request so non-deployment endpoints stay correct.
             let base_url = crate::azure::azure_base_url(&endpoint, None);
             (
-                api_key.unwrap_or_default(),
+                api_key,
                 base_url,
                 vec![("api-version".to_string(), api_version)],
                 Some(AzureSettings {
@@ -244,17 +308,26 @@ impl ClientBuilder {
                 }),
             )
         } else {
-            let api_key = api_key.ok_or_else(|| {
-                OpenAIError::Config(
+            let api_key = self
+                .api_key
+                .or_else(|| std::env::var("OPENAI_API_KEY").ok())
+                .filter(|k| !k.trim().is_empty())
+                .ok_or_else(|| {
+                    OpenAIError::Config(
                     "missing API key: pass `api_key` or set the OPENAI_API_KEY environment variable"
                         .into(),
                 )
-            })?;
-            let base_url = self
-                .base_url
-                .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
-                .filter(|u| !u.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+                })?;
+            // `data_residency` names the endpoint outright, so it also wins
+            // over `OPENAI_BASE_URL`.
+            let base_url = match self.data_residency {
+                Some(region) => region.base_url().to_string(),
+                None => self
+                    .base_url
+                    .or_else(|| std::env::var("OPENAI_BASE_URL").ok())
+                    .filter(|u| !u.trim().is_empty())
+                    .unwrap_or_else(|| DEFAULT_BASE_URL.to_string()),
+            };
             let base_url = base_url.trim_end_matches('/').to_string();
             (api_key, base_url, Vec::new(), None)
         };
@@ -309,5 +382,97 @@ mod tests {
         let debug = format!("{:?}", client.config());
         assert!(!debug.contains("sk-secret"));
         assert!(debug.contains("[REDACTED]"));
+    }
+
+    fn s(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    fn resolve(
+        key: Option<&str>,
+        token: Option<&str>,
+        env_key: Option<&str>,
+        env_token: Option<&str>,
+    ) -> Result<AzureAuth, OpenAIError> {
+        resolve_azure_auth(
+            key.and_then(s),
+            token.and_then(s),
+            env_key.and_then(s),
+            env_token.and_then(s),
+        )
+    }
+
+    #[test]
+    fn azure_explicit_key_beats_env_token() {
+        let auth = resolve(Some("k"), None, None, Some("env-token")).unwrap();
+        assert!(matches!(auth, AzureAuth::ApiKey(k) if k == "k"));
+    }
+
+    #[test]
+    fn azure_explicit_token_beats_env_key() {
+        let auth = resolve(None, Some("t"), Some("env-key"), None).unwrap();
+        assert!(matches!(auth, AzureAuth::BearerToken(t) if t == "t"));
+    }
+
+    #[test]
+    fn azure_both_explicit_is_error() {
+        let err = resolve(Some("k"), Some("t"), None, None).unwrap_err();
+        assert!(matches!(err, OpenAIError::Config(_)));
+    }
+
+    #[test]
+    fn azure_explicit_blank_is_error_not_env_fallthrough() {
+        assert!(resolve(Some(""), None, Some("env-key"), Some("env-token")).is_err());
+        assert!(resolve(None, Some("  "), Some("env-key"), Some("env-token")).is_err());
+    }
+
+    #[test]
+    fn azure_env_token_beats_env_key() {
+        let auth = resolve(None, None, Some("env-key"), Some("env-token")).unwrap();
+        assert!(matches!(auth, AzureAuth::BearerToken(t) if t == "env-token"));
+    }
+
+    #[test]
+    fn azure_env_key_used_when_no_token() {
+        let auth = resolve(None, None, Some("env-key"), None).unwrap();
+        assert!(matches!(auth, AzureAuth::ApiKey(k) if k == "env-key"));
+    }
+
+    #[test]
+    fn azure_blank_env_is_unset() {
+        assert!(resolve(None, None, Some(" "), Some("")).is_err());
+    }
+
+    #[test]
+    fn data_residency_urls() {
+        let url = |r| {
+            ClientBuilder::new()
+                .api_key("sk")
+                .data_residency(r)
+                .build()
+                .unwrap()
+                .base_url()
+                .to_string()
+        };
+        assert_eq!(url(DataResidency::Global), "https://api.openai.com/v1");
+        assert_eq!(url(DataResidency::Us), "https://us.api.openai.com/v1");
+        assert_eq!(url(DataResidency::Eu), "https://eu.api.openai.com/v1");
+        assert_eq!(url(DataResidency::Ae), "https://ae.api.openai.com/v1");
+    }
+
+    #[test]
+    fn data_residency_conflicts_are_config_errors() {
+        let with_base = ClientBuilder::new()
+            .api_key("sk")
+            .base_url("https://example.com/v1")
+            .data_residency(DataResidency::Eu)
+            .build();
+        assert!(matches!(with_base, Err(OpenAIError::Config(_))));
+        let with_azure = ClientBuilder::new()
+            .api_key("sk")
+            .azure("https://x.openai.azure.com", "2024-02-01")
+            .data_residency(DataResidency::Eu)
+            .build();
+        assert!(matches!(with_azure, Err(OpenAIError::Config(_))));
     }
 }

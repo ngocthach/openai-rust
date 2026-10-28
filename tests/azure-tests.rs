@@ -2,6 +2,8 @@
 //! `api-version` query, `api-key`/AD-token auth, and deployment path
 //! rewriting — mirroring `openai-python/src/openai/lib/azure.py`.
 
+use openai_compat::types::audio::TranscriptionRequest;
+use openai_compat::types::files::FileUpload;
 use openai_compat::{ChatCompletionRequest, Client, Message};
 use serde_json::json;
 use wiremock::matchers::{header, method, path, query_param};
@@ -194,4 +196,109 @@ async fn azure_requires_api_version_and_credentials() {
             .unwrap_err();
         assert!(err.to_string().contains("credentials"), "got: {err}");
     }
+}
+
+#[tokio::test]
+async fn azure_pinned_deployment_does_not_rewrite_body_less_requests() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openai/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("k")
+        .azure(server.uri(), "2024-06-01")
+        .azure_deployment("my-gpt4o")
+        .build()
+        .unwrap();
+    let _: serde_json::Value = client.get("/chat/completions", &[]).await.unwrap();
+}
+
+#[tokio::test]
+async fn azure_pinned_deployment_routes_multipart_requests() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/openai/deployments/whisper/audio/transcriptions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"text": "hi"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("k")
+        .azure(server.uri(), "2024-06-01")
+        .azure_deployment("whisper")
+        .build()
+        .unwrap();
+    let transcription = client
+        .audio()
+        .transcriptions(
+            FileUpload::new("a.wav", b"RIFF".to_vec()),
+            TranscriptionRequest::new("whisper-1"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(transcription.text, "hi");
+}
+
+#[tokio::test]
+async fn azure_derived_deployment_is_percent_encoded() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_body()))
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("k")
+        .azure(server.uri(), "2024-06-01")
+        .build()
+        .unwrap();
+    client
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new(
+            "org/model",
+            vec![Message::user("hi")],
+        ))
+        .await
+        .unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        requests[0].url.path(),
+        "/openai/deployments/org%2Fmodel/chat/completions"
+    );
+
+    let err = client
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new("..", vec![Message::user("hi")]))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, openai_compat::OpenAIError::Config(_)));
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[test]
+fn azure_both_explicit_credentials_is_config_error() {
+    let err = Client::builder()
+        .api_key("k")
+        .azure_ad_token("t")
+        .azure("https://example.openai.azure.com", "2024-06-01")
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, openai_compat::OpenAIError::Config(_)));
+}
+
+#[test]
+fn azure_explicit_blank_credential_is_config_error() {
+    let err = Client::builder()
+        .api_key("")
+        .azure("https://example.openai.azure.com", "2024-06-01")
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, openai_compat::OpenAIError::Config(_)));
 }

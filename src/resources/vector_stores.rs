@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::{HasId, List};
-use crate::request::RequestOptions;
+use crate::request::{api_path, encode_path_segment, RequestOptions};
 use crate::types::vector_stores::{
     FileContentResponse, VectorStore, VectorStoreCreateParams, VectorStoreDeleted, VectorStoreFile,
     VectorStoreFileBatch, VectorStoreFileBatchCreateParams, VectorStoreFileCreateParams,
@@ -77,7 +77,7 @@ impl VectorStores {
         self.client
             .execute(
                 Method::GET,
-                &format!("/vector_stores/{vector_store_id}"),
+                &api_path!("/vector_stores/{}", vector_store_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -92,7 +92,7 @@ impl VectorStores {
         self.client
             .execute(
                 Method::POST,
-                &format!("/vector_stores/{vector_store_id}"),
+                &api_path!("/vector_stores/{}", vector_store_id),
                 beta_json(&params)?,
             )
             .await
@@ -123,7 +123,7 @@ impl VectorStores {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/vector_stores/{vector_store_id}"),
+                &api_path!("/vector_stores/{}", vector_store_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -138,7 +138,7 @@ impl VectorStores {
         self.client
             .execute(
                 Method::POST,
-                &format!("/vector_stores/{vector_store_id}/search"),
+                &api_path!("/vector_stores/{}/search", vector_store_id),
                 beta_json(&params)?,
             )
             .await
@@ -170,8 +170,8 @@ impl VectorStoreFiles {
         }
     }
 
-    fn base(&self) -> String {
-        format!("/vector_stores/{}/files", self.vector_store_id)
+    fn base(&self) -> Result<String, OpenAIError> {
+        Ok(api_path!("/vector_stores/{}/files", self.vector_store_id))
     }
 
     /// Attach a file to the vector store.
@@ -180,7 +180,7 @@ impl VectorStoreFiles {
         params: VectorStoreFileCreateParams,
     ) -> Result<VectorStoreFile, OpenAIError> {
         self.client
-            .execute(Method::POST, &self.base(), beta_json(&params)?)
+            .execute(Method::POST, &self.base()?, beta_json(&params)?)
             .await
     }
 
@@ -189,7 +189,7 @@ impl VectorStoreFiles {
         self.client
             .execute(
                 Method::GET,
-                &format!("{}/{file_id}", self.base()),
+                &format!("{}/{}", self.base()?, encode_path_segment(file_id)?),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -205,7 +205,7 @@ impl VectorStoreFiles {
         self.client
             .execute(
                 Method::POST,
-                &format!("{}/{file_id}", self.base()),
+                &format!("{}/{}", self.base()?, encode_path_segment(file_id)?),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -216,7 +216,7 @@ impl VectorStoreFiles {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("{}/{file_id}", self.base()),
+                &format!("{}/{}", self.base()?, encode_path_segment(file_id)?),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -231,7 +231,7 @@ impl VectorStoreFiles {
         self.client
             .execute(
                 Method::GET,
-                &self.base(),
+                &self.base()?,
                 with_beta(RequestOptions::query(query)),
             )
             .await
@@ -243,7 +243,7 @@ impl VectorStoreFiles {
         params: Option<VectorStoreFileListParams>,
     ) -> Result<Vec<VectorStoreFile>, OpenAIError> {
         let query = params.unwrap_or_default().to_query();
-        paginate_all_beta(&self.client, &self.base(), query).await
+        paginate_all_beta(&self.client, &self.base()?, query).await
     }
 
     /// Retrieve the parsed content of a vector store file.
@@ -251,7 +251,7 @@ impl VectorStoreFiles {
         self.client
             .execute(
                 Method::GET,
-                &format!("{}/{file_id}/content", self.base()),
+                &format!("{}/{}/content", self.base()?, encode_path_segment(file_id)?),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -273,8 +273,11 @@ impl VectorStoreFileBatches {
         }
     }
 
-    fn base(&self) -> String {
-        format!("/vector_stores/{}/file_batches", self.vector_store_id)
+    fn base(&self) -> Result<String, OpenAIError> {
+        Ok(api_path!(
+            "/vector_stores/{}/file_batches",
+            self.vector_store_id
+        ))
     }
 
     /// Create a file batch.
@@ -283,7 +286,7 @@ impl VectorStoreFileBatches {
         params: VectorStoreFileBatchCreateParams,
     ) -> Result<VectorStoreFileBatch, OpenAIError> {
         self.client
-            .execute(Method::POST, &self.base(), beta_json(&params)?)
+            .execute(Method::POST, &self.base()?, beta_json(&params)?)
             .await
     }
 
@@ -292,7 +295,7 @@ impl VectorStoreFileBatches {
         self.client
             .execute(
                 Method::GET,
-                &format!("{}/{batch_id}", self.base()),
+                &format!("{}/{}", self.base()?, encode_path_segment(batch_id)?),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -303,7 +306,7 @@ impl VectorStoreFileBatches {
         self.client
             .execute(
                 Method::POST,
-                &format!("{}/{batch_id}/cancel", self.base()),
+                &format!("{}/{}/cancel", self.base()?, encode_path_segment(batch_id)?),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -319,7 +322,7 @@ impl VectorStoreFileBatches {
         self.client
             .execute(
                 Method::GET,
-                &format!("{}/{batch_id}/files", self.base()),
+                &format!("{}/{}/files", self.base()?, encode_path_segment(batch_id)?),
                 with_beta(RequestOptions::query(query)),
             )
             .await

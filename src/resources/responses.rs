@@ -7,7 +7,7 @@ use reqwest::Method;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::List;
-use crate::request::RequestOptions;
+use crate::request::{api_path, RequestOptions};
 use crate::streaming::EventStream;
 use crate::types::responses::{
     CreateResponseRequest, Response, ResponseIncludable, ResponseItem, ResponseStreamEvent,
@@ -151,7 +151,7 @@ impl Responses {
         self.client
             .execute(
                 Method::GET,
-                &format!("/responses/{response_id}"),
+                &api_path!("/responses/{}", response_id),
                 RequestOptions::query(query),
             )
             .await
@@ -172,7 +172,7 @@ impl Responses {
             .client
             .execute_raw(
                 Method::GET,
-                &format!("/responses/{response_id}"),
+                &api_path!("/responses/{}", response_id),
                 RequestOptions::query(query),
             )
             .await?;
@@ -184,7 +184,7 @@ impl Responses {
         self.client
             .execute_no_content(
                 Method::DELETE,
-                &format!("/responses/{response_id}"),
+                &api_path!("/responses/{}", response_id),
                 RequestOptions::default(),
             )
             .await
@@ -195,7 +195,7 @@ impl Responses {
         self.client
             .execute(
                 Method::POST,
-                &format!("/responses/{response_id}/cancel"),
+                &api_path!("/responses/{}/cancel", response_id),
                 RequestOptions::default(),
             )
             .await
@@ -228,7 +228,7 @@ impl ResponseInputItems {
         self.client
             .execute(
                 Method::GET,
-                &format!("/responses/{}/input_items", self.response_id),
+                &api_path!("/responses/{}/input_items", self.response_id),
                 RequestOptions::query(query),
             )
             .await
@@ -242,7 +242,7 @@ impl ResponseInputItems {
         let query = params.map(|p| p.to_query()).unwrap_or_default();
         self.client
             .paginate_all(
-                &format!("/responses/{}/input_items", self.response_id),
+                &api_path!("/responses/{}/input_items", self.response_id),
                 query,
             )
             .await

@@ -684,3 +684,97 @@ async fn non_json_gateway_error_message_includes_snippet() {
     assert_eq!(api.message, "Error code: 502 - <h1>Bad Gateway</h1>");
     assert_eq!(api.body.as_deref(), Some("<h1>Bad Gateway</h1>"));
 }
+
+#[tokio::test]
+async fn cross_origin_redirect_is_refused_without_contacting_target() {
+    let origin = MockServer::start().await;
+    let target = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("location", format!("{}/v1/chat/completions", target.uri())),
+        )
+        .mount(&origin)
+        .await;
+
+    let err = client_for(&origin)
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("secret prompt")],
+        ))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, OpenAIError::Redirect(_)), "got: {err:?}");
+    assert!(err.to_string().contains("cross-origin"), "got: {err}");
+    assert_eq!(target.received_requests().await.unwrap().len(), 0);
+    // Redirect refusals are not retried.
+    assert_eq!(origin.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn same_origin_redirect_is_followed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/v1/moved"))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/moved"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client_for(&server)
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn redirect_loop_is_bounded() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/v1/models"))
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server).models().list().await.unwrap_err();
+    assert!(matches!(err, OpenAIError::Redirect(_)), "got: {err:?}");
+    let n = server.received_requests().await.unwrap().len();
+    assert!((2..=11).contains(&n), "unexpected request count {n}");
+}
+
+#[tokio::test]
+async fn path_parameters_are_percent_encoded_and_dot_segments_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "x", "object": "model", "created": 1, "owned_by": "me"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server);
+
+    client.models().retrieve("ft:gpt-4o:org::id").await.unwrap();
+    client.models().retrieve("org/model?x#y").await.unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests[0].url.path(), "/v1/models/ft:gpt-4o:org::id");
+    assert_eq!(requests[1].url.path(), "/v1/models/org%2Fmodel%3Fx%23y");
+    assert_eq!(requests[1].url.query(), None);
+
+    let err = client.models().retrieve("..").await.unwrap_err();
+    assert!(matches!(err, OpenAIError::Config(_)));
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}

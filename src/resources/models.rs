@@ -5,7 +5,7 @@ use reqwest::Method;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::List;
-use crate::request::RequestOptions;
+use crate::request::{api_path, RequestOptions};
 use crate::types::models::{Deleted, Model};
 
 /// The models resource.
@@ -31,7 +31,7 @@ impl Models {
         self.client
             .execute(
                 Method::GET,
-                &format!("/models/{model}"),
+                &api_path!("/models/{}", model),
                 RequestOptions::default(),
             )
             .await
@@ -42,7 +42,7 @@ impl Models {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/models/{model}"),
+                &api_path!("/models/{}", model),
                 RequestOptions::default(),
             )
             .await

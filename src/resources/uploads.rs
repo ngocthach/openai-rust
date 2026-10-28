@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::client::Client;
 use crate::error::OpenAIError;
-use crate::request::{MultipartField, RequestOptions};
+use crate::request::{api_path, MultipartField, RequestOptions};
 use crate::types::uploads::{Upload, UploadCreateParams, UploadPart};
 
 /// The uploads resource.
@@ -44,7 +44,7 @@ impl Uploads {
         self.client
             .execute(
                 Method::POST,
-                &format!("/uploads/{upload_id}/parts"),
+                &api_path!("/uploads/{}/parts", upload_id),
                 RequestOptions::multipart(fields),
             )
             .await
@@ -65,7 +65,7 @@ impl Uploads {
         self.client
             .execute(
                 Method::POST,
-                &format!("/uploads/{upload_id}/complete"),
+                &api_path!("/uploads/{}/complete", upload_id),
                 RequestOptions::json(body),
             )
             .await
@@ -76,7 +76,7 @@ impl Uploads {
         self.client
             .execute(
                 Method::POST,
-                &format!("/uploads/{upload_id}/cancel"),
+                &api_path!("/uploads/{}/cancel", upload_id),
                 RequestOptions::default(),
             )
             .await

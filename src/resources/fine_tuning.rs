@@ -7,7 +7,7 @@ use reqwest::Method;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::List;
-use crate::request::RequestOptions;
+use crate::request::{api_path, RequestOptions};
 use crate::types::fine_tuning::{
     FineTuningJob, FineTuningJobCheckpoint, FineTuningJobEvent, FineTuningJobListParams,
     FineTuningJobRequest, FineTuningPageParams,
@@ -59,7 +59,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::GET,
-                &format!("/fine_tuning/jobs/{job_id}"),
+                &api_path!("/fine_tuning/jobs/{}", job_id),
                 RequestOptions::default(),
             )
             .await
@@ -94,7 +94,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/fine_tuning/jobs/{job_id}/cancel"),
+                &api_path!("/fine_tuning/jobs/{}/cancel", job_id),
                 RequestOptions::default(),
             )
             .await
@@ -105,7 +105,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/fine_tuning/jobs/{job_id}/pause"),
+                &api_path!("/fine_tuning/jobs/{}/pause", job_id),
                 RequestOptions::default(),
             )
             .await
@@ -116,7 +116,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/fine_tuning/jobs/{job_id}/resume"),
+                &api_path!("/fine_tuning/jobs/{}/resume", job_id),
                 RequestOptions::default(),
             )
             .await
@@ -132,7 +132,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::GET,
-                &format!("/fine_tuning/jobs/{job_id}/events"),
+                &api_path!("/fine_tuning/jobs/{}/events", job_id),
                 RequestOptions::query(query),
             )
             .await
@@ -148,7 +148,7 @@ impl FineTuningJobs {
         self.client
             .execute(
                 Method::GET,
-                &format!("/fine_tuning/jobs/{job_id}/checkpoints"),
+                &api_path!("/fine_tuning/jobs/{}/checkpoints", job_id),
                 RequestOptions::query(query),
             )
             .await
