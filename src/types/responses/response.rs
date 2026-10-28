@@ -198,6 +198,34 @@ impl Response {
     }
 }
 
+/// Result of `POST /responses/compact`: the compacted output items (all user
+/// messages followed by one compaction item) and the compaction pass's usage.
+/// Not a [`Response`]: there is no `model`, `status` or other response state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct CompactedResponse {
+    pub id: String,
+    pub created_at: i64,
+    /// Always `"response.compaction"`.
+    #[serde(default)]
+    pub object: String,
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub output: Vec<OutputItem>,
+    pub usage: ResponseUsage,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Result of `POST /responses/input_tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct InputTokenCount {
+    pub input_tokens: u64,
+    /// Always `"response.input_tokens"`.
+    #[serde(default)]
+    pub object: String,
+}
+
 /// One item returned by `GET /responses/{id}/input_items`. Kept as raw JSON
 /// since input items may be any of the input or output item shapes.
 #[derive(Debug, Clone, Serialize, Deserialize)]

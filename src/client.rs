@@ -10,6 +10,7 @@ use crate::resources::audio::Audio;
 use crate::resources::batches::Batches;
 use crate::resources::chat::Chat;
 use crate::resources::completions::Completions;
+use crate::resources::conversations::Conversations;
 use crate::resources::embeddings::Embeddings;
 use crate::resources::files::Files;
 use crate::resources::fine_tuning::FineTuning;
@@ -191,6 +192,12 @@ impl Client {
     /// `.messages()` and `.runs()`.
     pub fn threads(&self) -> Threads {
         Threads::new(self.clone())
+    }
+
+    /// The Conversations API resource: `client.conversations()`, with
+    /// `.items(id)` for the items of one conversation.
+    pub fn conversations(&self) -> Conversations {
+        Conversations::new(self.clone())
     }
 
     /// The Responses API resource: `client.responses()`.

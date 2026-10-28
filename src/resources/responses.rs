@@ -1,6 +1,7 @@
 //! `/responses` resource, mirroring `resources/responses/responses.py`:
 //! create (+streaming), retrieve (+streaming resume for background mode),
-//! delete, cancel, and the `input_items` sub-resource.
+//! delete, cancel, compact, input token counting, and the `input_items`
+//! sub-resource.
 
 use reqwest::Method;
 
@@ -10,7 +11,8 @@ use crate::pagination::List;
 use crate::request::{api_path, RequestOptions};
 use crate::streaming::EventStream;
 use crate::types::responses::{
-    CreateResponseRequest, Response, ResponseIncludable, ResponseItem, ResponseStreamEvent,
+    CompactResponseRequest, CompactedResponse, CreateResponseRequest, InputTokenCount,
+    InputTokenCountRequest, Response, ResponseIncludable, ResponseItem, ResponseStreamEvent,
 };
 
 /// Query parameters for `retrieve`.
@@ -197,6 +199,37 @@ impl Responses {
                 Method::POST,
                 &api_path!("/responses/{}/cancel", response_id),
                 RequestOptions::default(),
+            )
+            .await
+    }
+
+    /// Compact a conversation: returns the user messages plus a single
+    /// compaction item that stands in for the rest of the context.
+    pub async fn compact(
+        &self,
+        request: CompactResponseRequest,
+    ) -> Result<CompactedResponse, OpenAIError> {
+        let body = serde_json::to_value(&request)?;
+        self.client
+            .execute(
+                Method::POST,
+                "/responses/compact",
+                RequestOptions::json(body),
+            )
+            .await
+    }
+
+    /// Count the input tokens a request would use, without running it.
+    pub async fn count_input_tokens(
+        &self,
+        request: InputTokenCountRequest,
+    ) -> Result<InputTokenCount, OpenAIError> {
+        let body = serde_json::to_value(&request)?;
+        self.client
+            .execute(
+                Method::POST,
+                "/responses/input_tokens",
+                RequestOptions::json(body),
             )
             .await
     }

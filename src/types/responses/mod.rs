@@ -14,9 +14,12 @@ pub use config::{
 };
 pub use events::ResponseStreamEvent;
 pub use input::{EasyContent, FileDetail, Input, InputContent, InputItem};
-pub use request::{CreateResponseRequest, ResponsesPromptCacheOptions};
+pub use request::{
+    CompactResponseRequest, CreateResponseRequest, InputTokenCountRequest,
+    ResponsesPromptCacheOptions,
+};
 pub use response::{
-    IncompleteDetails, KnownOutputItem, OutputContent, OutputItem, Response, ResponseError,
-    ResponseItem, ResponseStatus, ResponseUsage,
+    CompactedResponse, IncompleteDetails, InputTokenCount, KnownOutputItem, OutputContent,
+    OutputItem, Response, ResponseError, ResponseItem, ResponseStatus, ResponseUsage,
 };
 pub use tools::{FunctionTool, Tool, ToolChoice};

@@ -218,6 +218,29 @@ async fn azure_pinned_deployment_does_not_rewrite_body_less_requests() {
 }
 
 #[tokio::test]
+async fn azure_pinned_deployment_does_not_rewrite_stored_chat_completion_list() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/openai/chat/completions"))
+        .and(query_param("api-version", "2024-06-01"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list", "data": [], "has_more": false
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("k")
+        .azure(server.uri(), "2024-06-01")
+        .azure_deployment("my-gpt4o")
+        .build()
+        .unwrap();
+    let page = client.chat().completions().list(None).await.unwrap();
+    assert!(page.data.is_empty());
+}
+
+#[tokio::test]
 async fn azure_pinned_deployment_routes_multipart_requests() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

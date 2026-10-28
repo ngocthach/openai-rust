@@ -3,10 +3,12 @@
 //! event, failed-is-typed), and input_items pagination.
 
 use futures_util::StreamExt;
-use openai_compat::types::responses::ResponseStreamEvent;
+use openai_compat::types::responses::{
+    CompactResponseRequest, InputTokenCountRequest, ResponseStreamEvent,
+};
 use openai_compat::{Client, CreateResponseRequest};
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path, query_param};
+use wiremock::matchers::{body_json, body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn client_for(server: &MockServer) -> Client {
@@ -344,4 +346,65 @@ async fn input_items_pagination_follows_cursor() {
         .await
         .unwrap();
     assert_eq!(items.len(), 2);
+}
+
+#[tokio::test]
+async fn compact_posts_and_returns_compacted_response() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses/compact"))
+        .and(body_json(json!({
+            "model": "gpt-5", "input": "hello", "previous_response_id": "resp_0"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "resp_c1", "object": "response.compaction", "created_at": 1700000000,
+            "output": [
+                {"type": "message", "id": "msg_1", "role": "user",
+                 "content": [{"type": "input_text", "text": "hello"}]},
+                {"type": "compaction", "id": "cmp_1", "encrypted_content": "abc"}
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = CompactResponseRequest::new("gpt-5", "hello").previous_response_id("resp_0");
+    let compacted = client_for(&server)
+        .responses()
+        .compact(request)
+        .await
+        .unwrap();
+    assert_eq!(compacted.id, "resp_c1");
+    assert_eq!(compacted.object, "response.compaction");
+    assert_eq!(compacted.output.len(), 2);
+    assert_eq!(compacted.usage.total_tokens, 12);
+}
+
+#[tokio::test]
+async fn count_input_tokens_posts_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/responses/input_tokens"))
+        .and(body_json(json!({
+            "model": "gpt-5", "input": "hello", "instructions": "be brief"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "response.input_tokens", "input_tokens": 11
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let request = InputTokenCountRequest::new()
+        .model("gpt-5")
+        .input("hello")
+        .instructions("be brief");
+    let count = client_for(&server)
+        .responses()
+        .count_input_tokens(request)
+        .await
+        .unwrap();
+    assert_eq!(count.input_tokens, 11);
+    assert_eq!(count.object, "response.input_tokens");
 }

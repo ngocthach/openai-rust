@@ -315,6 +315,8 @@ multimodal content parts), the Responses API (incl. streaming, background
 mode, `input_items` pagination), embeddings, models, moderations, legacy
 completions, images (generate), files, audio (speech/transcriptions), batches,
 resumable uploads, fine-tuning jobs, vector stores, assistants (beta v2),
+conversations (+ items), stored chat completions (retrieve/update/list/delete/
+messages), Responses `compact` and input token counting,
 webhook signature verification, Azure OpenAI mode, realtime WebSockets,
 retries, streaming, and cursor pagination.
 
@@ -322,9 +324,9 @@ Deliberately simplified: assistants streaming runs and the fully-typed
 realtime event surface are not modeled (events are `serde_json::Value` with
 typed constructors); deep polymorphic fields (graders, chunking filters,
 step details) are `serde_json::Value`. Responses API v1 covers
-create/retrieve/delete/cancel/streaming/`input_items`, with the built-in
-tools beyond `web_search`/`file_search`/`code_interpreter`, the `compact()`
-and `input_tokens.count()` endpoints, the `parse()` structured-output
+create/retrieve/delete/cancel/streaming/`compact`/`count_input_tokens`/
+`input_items`, with the built-in tools beyond
+`web_search`/`file_search`/`code_interpreter`, the `parse()` structured-output
 wrapper, and the Responses-over-WebSocket connection left as future work. For
 untyped endpoints use the `client.get::<serde_json::Value>(...)` /
 `client.post(...)` escape hatch.

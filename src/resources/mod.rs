@@ -6,6 +6,7 @@ pub mod audio;
 pub mod batches;
 pub mod chat;
 pub mod completions;
+pub mod conversations;
 pub mod embeddings;
 pub mod files;
 pub mod fine_tuning;

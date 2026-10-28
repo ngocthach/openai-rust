@@ -811,3 +811,173 @@ async fn transcription_sends_array_params_as_bracketed_multipart_fields() {
         assert!(body.contains(value), "missing {value}");
     }
 }
+
+fn stored_completion_page(ids: &[&str], has_more: bool) -> serde_json::Value {
+    let data: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            let mut body = chat_response_body();
+            body["id"] = json!(id);
+            body
+        })
+        .collect();
+    json!({"object": "list", "data": data, "has_more": has_more})
+}
+
+#[tokio::test]
+async fn stored_chat_completion_retrieve_update_delete() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .and(wiremock::matchers::body_json(
+            json!({"metadata": {"k": "v"}}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-123", "object": "chat.completion.deleted", "deleted": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let completions = client.chat().completions();
+    assert_eq!(
+        completions.retrieve("chatcmpl-123").await.unwrap().id,
+        "chatcmpl-123"
+    );
+    let metadata = std::collections::HashMap::from([("k".to_string(), "v".to_string())]);
+    completions.update("chatcmpl-123", metadata).await.unwrap();
+    assert!(completions.delete("chatcmpl-123").await.unwrap().deleted);
+}
+
+#[tokio::test]
+async fn stored_chat_completion_list_encodes_metadata_filter_in_brackets() {
+    use openai_compat::types::chat::ChatCompletionListParams;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .and(query_param("metadata[k]", "v"))
+        .and(query_param("model", "gpt-4o"))
+        .and(query_param("limit", "2"))
+        .and(query_param("order", "desc"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-1"], false)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let params = ChatCompletionListParams::new()
+        .model("gpt-4o")
+        .limit(2)
+        .order("desc")
+        .metadata(std::collections::HashMap::from([(
+            "k".to_string(),
+            "v".to_string(),
+        )]));
+    let page = client_for(&server)
+        .chat()
+        .completions()
+        .list(Some(params))
+        .await
+        .unwrap();
+    assert_eq!(page.data.len(), 1);
+
+    let requests = server.received_requests().await.unwrap();
+    let query = requests[0].url.query().unwrap();
+    assert!(query.contains("metadata%5Bk%5D=v"), "raw query: {query}");
+}
+
+#[tokio::test]
+async fn stored_chat_completion_list_all_follows_item_id_cursor() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .and(query_param("after", "chatcmpl-2"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-3"], false)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-1", "chatcmpl-2"], true)),
+        )
+        .mount(&server)
+        .await;
+
+    let all = client_for(&server)
+        .chat()
+        .completions()
+        .list_all(None)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3);
+}
+
+#[tokio::test]
+async fn stored_chat_completion_messages_lists_with_cursor_params() {
+    use openai_compat::types::chat::ChatCompletionMessagesListParams;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/chatcmpl-123/messages"))
+        .and(query_param("after", "msg_0"))
+        .and(query_param("limit", "3"))
+        .and(query_param("order", "asc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list", "has_more": false,
+            "data": [{"id": "msg_1", "role": "user", "content": "hi", "content_parts": null}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let params = ChatCompletionMessagesListParams::new()
+        .after("msg_0")
+        .limit(3)
+        .order("asc");
+    let page = client_for(&server)
+        .chat()
+        .completions()
+        .messages("chatcmpl-123", Some(params))
+        .await
+        .unwrap();
+    assert_eq!(page.data[0].id, "msg_1");
+    assert_eq!(page.data[0].message.content.as_deref(), Some("hi"));
+}
+
+#[tokio::test]
+async fn stored_chat_completion_id_is_path_encoded() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/a%2Fb"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    client_for(&server)
+        .chat()
+        .completions()
+        .retrieve("a/b")
+        .await
+        .unwrap();
+}

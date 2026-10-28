@@ -1,9 +1,13 @@
 //! Chat completions request/response/chunk types, mirroring
 //! `openai-python/src/openai/types/chat/`.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::common::{FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage};
+use crate::pagination::{cursor_query, HasId};
+use crate::request::bracket_query;
 
 /// Message content: a plain string or a list of multimodal parts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -498,6 +502,142 @@ impl ChatCompletion {
     /// Content of the first choice, if any — the common case.
     pub fn content(&self) -> Option<&str> {
         self.choices.first()?.message.content.as_deref()
+    }
+}
+
+impl HasId for ChatCompletion {
+    fn id(&self) -> Option<&str> {
+        Some(&self.id)
+    }
+}
+
+/// A message of a stored chat completion, from
+/// `GET /chat/completions/{id}/messages`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ChatCompletionStoreMessage {
+    pub id: String,
+    /// The `text` and `image_url` parts when the message was sent as a parts
+    /// array; null otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_parts: Option<Vec<serde_json::Value>>,
+    #[serde(flatten)]
+    pub message: ChatCompletionMessage,
+}
+
+impl HasId for ChatCompletionStoreMessage {
+    fn id(&self) -> Option<&str> {
+        Some(&self.id)
+    }
+}
+
+/// Result of `DELETE /chat/completions/{id}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ChatCompletionDeleted {
+    pub id: String,
+    #[serde(default)]
+    pub deleted: bool,
+    #[serde(default)]
+    pub object: String,
+}
+
+/// Query parameters for `GET /chat/completions` (stored completions).
+#[derive(Debug, Clone, Default)]
+pub struct ChatCompletionListParams {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    /// Only completions whose metadata contains all of these pairs; sent as
+    /// `metadata[key]=value`.
+    pub metadata: Option<HashMap<String, String>>,
+    pub model: Option<String>,
+    pub order: Option<String>,
+}
+
+impl ChatCompletionListParams {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn after(mut self, after: impl Into<String>) -> Self {
+        self.after = Some(after.into());
+        self
+    }
+
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn metadata(mut self, metadata: HashMap<String, String>) -> Self {
+        self.metadata = Some(metadata);
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    /// Sort order by timestamp: `"asc"` (default) or `"desc"`.
+    pub fn order(mut self, order: impl Into<String>) -> Self {
+        self.order = Some(order.into());
+        self
+    }
+
+    pub(crate) fn to_query(&self) -> Vec<(String, String)> {
+        let mut query = cursor_query(
+            self.after.as_deref(),
+            None,
+            self.limit,
+            self.order.as_deref(),
+        );
+        if let Some(model) = &self.model {
+            query.push(("model".to_string(), model.clone()));
+        }
+        if let Some(metadata) = &self.metadata {
+            query.extend(bracket_query("metadata", metadata));
+        }
+        query
+    }
+}
+
+/// Query parameters for `GET /chat/completions/{id}/messages`.
+#[derive(Debug, Clone, Default)]
+pub struct ChatCompletionMessagesListParams {
+    pub after: Option<String>,
+    pub limit: Option<u32>,
+    pub order: Option<String>,
+}
+
+impl ChatCompletionMessagesListParams {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn after(mut self, after: impl Into<String>) -> Self {
+        self.after = Some(after.into());
+        self
+    }
+
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Sort order by timestamp: `"asc"` (default) or `"desc"`.
+    pub fn order(mut self, order: impl Into<String>) -> Self {
+        self.order = Some(order.into());
+        self
+    }
+
+    pub(crate) fn to_query(&self) -> Vec<(String, String)> {
+        cursor_query(
+            self.after.as_deref(),
+            None,
+            self.limit,
+            self.order.as_deref(),
+        )
     }
 }
 

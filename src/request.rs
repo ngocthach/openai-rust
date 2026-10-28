@@ -117,6 +117,21 @@ pub(crate) fn encode_path_segment(value: &str) -> Result<String, OpenAIError> {
     Ok(out)
 }
 
+/// Encode a string map as bracketed query pairs (`prefix[key]=value`), the
+/// form used by filter parameters such as chat completion `metadata`. Keys
+/// are sorted so the query string is deterministic.
+pub(crate) fn bracket_query(
+    prefix: &str,
+    values: &std::collections::HashMap<String, String>,
+) -> Vec<(String, String)> {
+    let mut pairs: Vec<_> = values
+        .iter()
+        .map(|(key, value)| (format!("{prefix}[{key}]"), value.clone()))
+        .collect();
+    pairs.sort();
+    pairs
+}
+
 /// `format!` for URL paths: every argument is percent-encoded as one path
 /// segment via [`encode_path_segment`] and an invalid argument returns early
 /// with `Err(OpenAIError::Config)` from the enclosing function.
