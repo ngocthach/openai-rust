@@ -221,7 +221,9 @@ impl Client {
             model: model.to_string(),
             organization: config.organization.clone(),
             project: config.project.clone(),
-            extra_headers: Vec::new(),
+            // Client-wide default headers ride on the upgrade request too,
+            // applied after auth so they win on conflict (as in `realtime.py`).
+            extra_headers: config.default_headers.clone(),
         })
         .await
     }

@@ -71,6 +71,83 @@ async fn spawn_test_server(header_tx: oneshot::Sender<ObservedHeaders>) -> Strin
     format!("ws://{addr}")
 }
 
+/// Accept one upgrade, report the value of `header_name`, then close.
+#[allow(clippy::result_large_err)]
+async fn spawn_header_probe(
+    header_name: &'static str,
+    tx: oneshot::Sender<Option<String>>,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (stream, _peer) = listener.accept().await.unwrap();
+        let callback =
+            move |req: &Request, response: Response| -> Result<Response, ErrorResponse> {
+                let value = req
+                    .headers()
+                    .get(header_name)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                let _ = tx.send(value);
+                Ok(response)
+            };
+        let mut ws = accept_hdr_async(stream, callback).await.unwrap();
+        ws.close(None).await.ok();
+    });
+    format!("ws://{addr}")
+}
+
+#[tokio::test]
+async fn client_default_headers_are_sent_on_upgrade() {
+    let (tx, rx) = oneshot::channel();
+    let url = spawn_header_probe("X-Gateway-Key", tx).await;
+
+    let client = openai_compat::Client::builder()
+        .api_key("sk-test-key")
+        .base_url(url)
+        .header("X-Gateway-Key", "gw-secret")
+        .build()
+        .unwrap();
+    let session = client.connect_realtime("test-model").await.unwrap();
+    assert_eq!(rx.await.unwrap().as_deref(), Some("gw-secret"));
+    drop(session);
+}
+
+#[tokio::test]
+async fn extra_headers_override_auth_on_conflict() {
+    let (tx, rx) = oneshot::channel();
+    let url = spawn_header_probe("Authorization", tx).await;
+
+    let session = realtime::connect(RealtimeConnectOptions {
+        api_key: "sk-test-key".into(),
+        base_url: url,
+        model: "test-model".into(),
+        organization: None,
+        project: None,
+        extra_headers: vec![("authorization".into(), "Bearer other".into())],
+    })
+    .await
+    .unwrap();
+    assert_eq!(rx.await.unwrap().as_deref(), Some("Bearer other"));
+    drop(session);
+}
+
+#[test]
+fn connect_options_debug_redacts_credentials() {
+    let options = RealtimeConnectOptions {
+        api_key: "sk-secret".into(),
+        base_url: "wss://example.com/v1".into(),
+        model: "m".into(),
+        organization: None,
+        project: None,
+        extra_headers: vec![("X-Gateway-Key".into(), "gw-secret".into())],
+    };
+    let debug = format!("{options:?}");
+    assert!(!debug.contains("sk-secret"), "{debug}");
+    assert!(!debug.contains("gw-secret"), "{debug}");
+    assert!(debug.contains("X-Gateway-Key"), "{debug}");
+}
+
 #[tokio::test]
 async fn connect_send_recv_close_roundtrip() {
     let (header_tx, header_rx) = oneshot::channel();
