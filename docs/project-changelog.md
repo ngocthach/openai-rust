@@ -1,5 +1,69 @@
 # Project Changelog
 
+## v0.4.0 — 2026-10-28
+
+Syncs the port to openai-python v3.40.0 (`77fd116d`); see `docs/upstream-sync.md`.
+Verification: 240 tests passing (`cargo test`), clippy clean (`-D warnings`), `cargo publish --dry-run` green.
+
+### Added
+
+- **Conversations** resource (`client.conversations()`): create, retrieve, update, delete, and `items(id)` with list/list_all, create, retrieve, delete. Pagination follows the envelope `last_id`; a page that reports more results without a cursor is an error, not a silent truncation.
+- **Stored chat completions**: `retrieve`, `update`, `list`/`list_all`, `delete`, and `messages`/`messages_all`. Metadata filters are sent as `metadata[key]=value`.
+- **Responses** `compact` (returns `CompactedResponse`) and `count_input_tokens`.
+- **`ClientBuilder::data_residency`** for regional OpenAI endpoints.
+- **`ApiError.body`**: raw response body, capped at 64 KiB.
+- **`Response.extra`** and `extra` maps on Responses request types, for untyped fields the crate does not model yet.
+- **Reasoning and prompt cache**: `ReasoningEffort::Max`; `Reasoning` gains `context` and `mode` (strings, with setters); chat and Responses requests accept `prompt_cache_options` (separate shapes, matching upstream).
+- **Other typed fields**: input file `detail`, chat stream audio deltas, transcription `keywords` and `languages`, speech `voice` accepts a custom voice object.
+
+### Changed (breaking)
+
+- **`ApiError`** message is now `Error code: {status} - {error.message}` for JSON bodies; non-JSON bodies get a truncated snippet. The struct gained `body` and is `#[non_exhaustive]`.
+  - Migration: read `ApiError.body` for the raw body; do not parse `message`; use `..` in struct patterns.
+- **Azure credentials** follow upstream precedence: an explicit credential beats the environment; two explicit credentials, or a blank explicit credential, is a config error. `OPENAI_API_KEY` is no longer an Azure fallback.
+  - Migration: set `AZURE_OPENAI_API_KEY`, or pass `.api_key(...)` or `.azure_ad_token(...)` explicitly.
+- **Cross-origin redirects** are refused on all clients with `OpenAIError::Redirect` and are not retried.
+  - Migration: match the new variant. If you relied on a redirect to another origin, set `base_url` to that origin.
+- **Path parameters** are percent-encoded as single RFC 3986 segments (`org/model` becomes `org%2Fmodel` in `models().retrieve()`). Empty, `.`, and `..` ids are rejected before any request is sent.
+  - Migration: pass raw ids. Pre-encoding them double-encodes (`%2F` becomes `%252F`).
+- **Azure pinned deployment** applies only to requests with a body, so body-less GETs (such as listing stored chat completions) are not routed to the deployment.
+  - Migration: none expected for requests with a body. Body-less requests now use the base Azure URL, as other non-deployment endpoints already do.
+- **`ReasoningEffort`** is `#[non_exhaustive]` and has a new `Max` variant.
+  - Migration: add a `_ =>` arm to exhaustive matches.
+- **`ResponseStatus`** gained an `Unknown` catch-all variant.
+  - Migration: add an `Unknown` arm to exhaustive matches.
+- **`KnownOutputItem::Message.content`** elements are now `OutputContentPart` (`Known(OutputContent)` or `Other(Value)`), so unrecognized parts such as `input_text` or `output_audio` keep their payload and re-serialize unchanged.
+  - Migration: match `OutputContentPart::Known(OutputContent::OutputText { .. })`; handle `Other(value)` for the rest.
+- **`ToolCall.function`** is now `Option<FunctionCall>`, and `ToolCall` gained `custom`.
+  - Migration: use `call.function.as_ref()` (for example `if let Some(f) = call.function.as_ref()`).
+- **Responses `FunctionCall.id`** is now `Option<String>`.
+  - Migration: handle `None`.
+- **Speech `voice`** is now `SpeechVoice`, not `String`.
+  - Migration: `From<&str>` and `From<String>` are implemented, so `"alloy".into()` keeps working.
+- **`ConversationItem`** is `#[non_exhaustive]` and omits an empty `type` when serializing.
+  - Migration: read it by field; do not build it with a struct literal.
+- **New public fields** break struct literals on non-`#[non_exhaustive]` types: `ToolCall` (`custom`), `Reasoning` (`context`, `mode`), `CreateResponseRequest` and `ChatCompletionRequest` (`prompt_cache_options`), `TranscriptionRequest` (`keywords`, `languages`), and `InputContent::InputFile` (`detail`).
+  - Migration: build `Reasoning`, `CreateResponseRequest`, `ChatCompletionRequest`, and `TranscriptionRequest` with `new()` and setters. For `ToolCall` and `InputContent::InputFile`, add the new field (`custom: None`, `detail: None`) and use `..` in patterns.
+- **Retry-After** values above 120 seconds disable retries. Values in (60s, 120s] are now honored (previously capped at 60s and fell back to backoff), so the worst-case wait per call rises accordingly.
+  - Migration: handle the `RateLimit` error yourself if you need to wait longer.
+
+### Fixed
+
+- `Response` and `CompactedResponse` re-serialize previously unknown server fields through `extra`.
+- Compact requests send prompt cache options as `{mode, ttl}` only (the shape upstream accepts there).
+- `SpeechVoice` converts from `&String`.
+- Explicit `null` in `Response.output`, message content, and `output_text` text deserializes as empty instead of failing or dropping the message. `ResponseStatus` tolerates unknown values (it serializes back as `"unknown"`, since the original string is not kept) and unknown content parts are preserved verbatim.
+- Chat tool calls with `custom` (rather than `function`) deserialize; responses function calls may omit `id`; `ImagesResponse.data` accepts `null`.
+- `Client::connect_realtime` forwards the client's default headers on the WebSocket upgrade, applied after auth so they win on conflict.
+- `RealtimeConnectOptions` `Debug` output no longer prints the API key or header values.
+- Retry: non-finite, negative, and HTTP-date `Retry-After` values fall back to backoff. Builder and redirect errors are not retried. A caller-supplied `x-stainless-retry-count` is preserved.
+- Azure model-derived deployment names are percent-encoded.
+
+### Security
+
+- **Cross-origin redirect credential and body leak.** Clients previously followed redirects to any origin, which could send credentials and request bodies to a host the caller did not configure. Redirects are now same-origin only (scheme, host, port; 10-hop limit).
+- **Path-parameter traversal.** Ids containing `/`, `?`, `#`, or dot-segments could alter the request path. Path parameters are now encoded per segment, and `.`/`..` ids are rejected.
+
 ## Unreleased — CI/doc hardening (2026-07-11)
 
 - **Added** `cargo fmt --check` and `cargo clippy --all-targets --all-features -- -D warnings` steps to `.github/workflows/rust.yml`, so the "clippy clean" claim in every prior release entry is now enforced by CI instead of only checked manually before publish.
@@ -23,7 +87,7 @@ Verification: 156 tests passing (123 baseline + 23 new unit + 10 new integration
 ## Unreleased — crate rename + final findings round (2026-07-04)
 
 - **Renamed** crate `openai-rust` → **`openai-compat`** (the crates.io name `openai-rust` is taken); library path is now `openai_compat::`. All sources, tests, examples, and README updated.
-- **Fixed** error `Display` parity with Python: non-JSON error bodies are used verbatim; JSON bodies keep the `Error code: {status} - {body}` prefix.
+- **Fixed** error `Display` parity with Python: non-JSON error bodies are used verbatim; JSON bodies keep the `Error code: {status} - {body}` prefix. *Superseded in v0.4.0:* JSON bodies now read `Error code: {status} - {error.message}`, and non-JSON bodies show a truncated snippet in the message; the raw body is available as `ApiError.body`.
 - **Added** typed logprobs: `ChatLogprobs`/`TokenLogprob`/`TopLogprob` (chat + chunks) and `CompletionLogprobs` (legacy) replace `serde_json::Value`.
 - **Added** missing builders: images `style`/`user`, speech `instructions`, transcription `response_format`, legacy-completion setters (n/seed/echo/best_of/suffix/penalties/logprobs/user/stream_options), assistant-update setters (description/temperature/top_p/reasoning_effort/response_format).
 - **Added** `ExpiresAfter` param type: `UploadCreateParams.expires_after` + `BatchCreateParams.output_expires_after`.
