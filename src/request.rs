@@ -10,7 +10,7 @@ use serde::de::DeserializeOwned;
 
 use crate::client::Client;
 use crate::error::OpenAIError;
-use crate::retry::{calculate_retry_timeout, parse_retry_after, should_retry};
+use crate::retry::{parse_retry_after, retry_delay, should_retry, RetryAfter};
 
 /// A multipart form field. Forms are rebuilt for every retry attempt, so the
 /// parts are stored as plain data rather than `reqwest::multipart::Form`.
@@ -170,11 +170,12 @@ impl Client {
             path.to_string()
         };
         let url = format!("{}{}", self.base_url(), path);
-        let mut builder = self
-            .http()
-            .request(method.clone(), url)
-            .headers(self.request_headers(&options.extra_headers)?)
-            .header("x-stainless-retry-count", attempt);
+        let mut headers = self.request_headers(&options.extra_headers)?;
+        // A caller-supplied retry count wins over the automatic one.
+        if !headers.contains_key("x-stainless-retry-count") {
+            headers.insert("x-stainless-retry-count", HeaderValue::from(attempt));
+        }
+        let mut builder = self.http().request(method.clone(), url).headers(headers);
         if !config.default_query.is_empty() {
             builder = builder.query(&config.default_query);
         }
@@ -206,11 +207,17 @@ impl Client {
             let request = self.build_request(&method, path, &options, attempt)?;
             match request.send().await {
                 Err(err) => {
-                    // Connection-level failure: always retryable while
-                    // attempts remain.
-                    if attempt < max_retries {
-                        tokio::time::sleep(calculate_retry_timeout(attempt, None, rand::random()))
-                            .await;
+                    // Connection-level failure: retryable while attempts remain,
+                    // except request-construction and redirect-policy errors,
+                    // which a retry cannot fix.
+                    let retryable = !(err.is_builder() || err.is_redirect());
+                    if retryable && attempt < max_retries {
+                        tokio::time::sleep(retry_delay(
+                            attempt,
+                            &RetryAfter::Absent,
+                            rand::random(),
+                        ))
+                        .await;
                         continue;
                     }
                     return Err(if err.is_timeout() {
@@ -230,13 +237,12 @@ impl Client {
                         .get("x-request-id")
                         .and_then(|v| v.to_str().ok())
                         .map(str::to_owned);
-                    if attempt < max_retries && should_retry(status.as_u16(), &headers) {
-                        tokio::time::sleep(calculate_retry_timeout(
-                            attempt,
-                            parse_retry_after(&headers),
-                            rand::random(),
-                        ))
-                        .await;
+                    let retry_after = parse_retry_after(&headers);
+                    if attempt < max_retries
+                        && should_retry(status.as_u16(), &headers, &retry_after)
+                    {
+                        tokio::time::sleep(retry_delay(attempt, &retry_after, rand::random()))
+                            .await;
                         continue;
                     }
 

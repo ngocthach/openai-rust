@@ -562,3 +562,125 @@ async fn generic_escape_hatch_get_and_post() {
         .unwrap();
     assert_eq!(value["created"], "yes");
 }
+
+fn simple_request() -> ChatCompletionRequest {
+    ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")])
+}
+
+#[tokio::test]
+async fn excessive_retry_after_prevents_retry_even_with_should_retry_true() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "300")
+                .insert_header("x-should-retry", "true")
+                .set_body_json(json!({"error": {"message": "slow down"}})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server)
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await
+        .unwrap_err();
+    let OpenAIError::Api(api) = err else {
+        panic!("expected Api error, got {err:?}");
+    };
+    assert_eq!(api.kind, ApiErrorKind::RateLimit);
+    assert_eq!(api.message, "Error code: 429 - slow down");
+}
+
+#[tokio::test]
+async fn retry_count_header_tracks_attempts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).insert_header("retry-after-ms", "5"))
+        .mount(&server)
+        .await;
+
+    let _ = client_for(&server)
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await;
+    let counts: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            r.headers
+                .get("x-stainless-retry-count")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(counts, ["0", "1", "2"]);
+}
+
+#[tokio::test]
+async fn user_supplied_retry_count_header_is_not_overwritten() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).insert_header("retry-after-ms", "5"))
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("sk-test-key")
+        .base_url(format!("{}/v1", server.uri()))
+        .max_retries(1)
+        .header("X-Stainless-Retry-Count", "42")
+        .build()
+        .unwrap();
+    let _ = client.chat().completions().create(simple_request()).await;
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 2);
+    for request in &requests {
+        let values: Vec<_> = request
+            .headers
+            .get_all("x-stainless-retry-count")
+            .iter()
+            .collect();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].to_str().unwrap(), "42");
+    }
+}
+
+#[tokio::test]
+async fn non_json_gateway_error_message_includes_snippet() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(502).set_body_string("<h1>Bad Gateway</h1>"))
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("sk-test-key")
+        .base_url(format!("{}/v1", server.uri()))
+        .max_retries(0)
+        .build()
+        .unwrap();
+    let err = client
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await
+        .unwrap_err();
+    let OpenAIError::Api(api) = err else {
+        panic!("expected Api error, got {err:?}");
+    };
+    assert_eq!(api.message, "Error code: 502 - <h1>Bad Gateway</h1>");
+    assert_eq!(api.body.as_deref(), Some("<h1>Bad Gateway</h1>"));
+}
