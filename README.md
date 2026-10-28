@@ -129,7 +129,10 @@ let request = ChatCompletionRequest::new("gpt-4o-mini", vec![Message::user("Weat
 let completion = client.chat().completions().create(request).await?;
 if let Some(calls) = &completion.choices[0].message.tool_calls {
     for call in calls {
-        println!("{} -> {}", call.function.name, call.function.arguments);
+        // `function` is `None` for custom tool calls (see `call.custom`).
+        if let Some(function) = &call.function {
+            println!("{} -> {}", function.name, function.arguments);
+        }
     }
 }
 # Ok(())

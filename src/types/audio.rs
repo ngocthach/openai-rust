@@ -2,6 +2,34 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Voice for text-to-speech: a built-in voice name (`"alloy"`, `"nova"`, ...)
+/// or a custom voice referenced by id (`{"id": "voice_123"}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum SpeechVoice {
+    Named(String),
+    Custom { id: String },
+}
+
+impl SpeechVoice {
+    /// A custom voice referenced by id.
+    pub fn custom(id: impl Into<String>) -> Self {
+        Self::Custom { id: id.into() }
+    }
+}
+
+impl From<&str> for SpeechVoice {
+    fn from(name: &str) -> Self {
+        Self::Named(name.to_owned())
+    }
+}
+
+impl From<String> for SpeechVoice {
+    fn from(name: String) -> Self {
+        Self::Named(name)
+    }
+}
+
 /// Request body for `POST /audio/speech` (text-to-speech).
 #[derive(Debug, Clone, Serialize)]
 pub struct SpeechRequest {
@@ -9,8 +37,8 @@ pub struct SpeechRequest {
     pub input: String,
     /// e.g. `"tts-1"`, `"gpt-4o-mini-tts"`.
     pub model: String,
-    /// e.g. `"alloy"`, `"nova"`, `"onyx"`.
-    pub voice: String,
+    /// e.g. `"alloy"`, `"nova"`, `"onyx"`, or [`SpeechVoice::custom`].
+    pub voice: SpeechVoice,
     /// `"mp3"` (default), `"opus"`, `"aac"`, `"flac"`, `"wav"`, `"pcm"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<String>,
@@ -26,7 +54,7 @@ impl SpeechRequest {
     pub fn new(
         model: impl Into<String>,
         input: impl Into<String>,
-        voice: impl Into<String>,
+        voice: impl Into<SpeechVoice>,
     ) -> Self {
         Self {
             input: input.into(),
@@ -110,4 +138,21 @@ impl TranscriptionRequest {
 #[non_exhaustive]
 pub struct Transcription {
     pub text: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn speech_voice_serializes_as_string_or_id_object() {
+        let named = SpeechRequest::new("tts-1", "hi", "alloy");
+        assert_eq!(serde_json::to_value(&named).unwrap()["voice"], "alloy");
+
+        let custom = SpeechRequest::new("tts-1", "hi", SpeechVoice::custom("v_1"));
+        assert_eq!(
+            serde_json::to_value(&custom).unwrap()["voice"],
+            serde_json::json!({"id": "v_1"})
+        );
+    }
 }

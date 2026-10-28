@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::pagination::HasId;
+use crate::types::common::null_as_default;
 
 /// Lifecycle status of a response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,6 +19,10 @@ pub enum ResponseStatus {
     Cancelled,
     Queued,
     Incomplete,
+    /// Forward-compatibility: a status this crate doesn't know yet must not
+    /// fail deserialization of the whole [`Response`].
+    #[serde(other)]
+    Unknown,
 }
 
 /// Error returned when the model fails to generate a response.
@@ -58,6 +63,8 @@ pub struct ResponseUsage {
 #[non_exhaustive]
 pub enum OutputContent {
     OutputText {
+        /// The API may send `null` here; it reads as an empty string.
+        #[serde(default, deserialize_with = "null_as_default")]
         text: String,
         #[serde(default)]
         annotations: Vec<serde_json::Value>,
@@ -65,6 +72,12 @@ pub enum OutputContent {
     Refusal {
         refusal: String,
     },
+    /// Forward-compatibility: an unrecognized part type keeps the enclosing
+    /// message typed instead of dropping it into [`OutputItem::Other`]. The
+    /// part's payload is not retained, so don't replay a parsed
+    /// `Response.output` as request input.
+    #[serde(other)]
+    Unknown,
 }
 
 /// The typed output item variants this crate models directly. Anything else
@@ -77,12 +90,16 @@ pub enum KnownOutputItem {
     Message {
         id: String,
         role: String,
+        /// The API may send `null` here; it reads as no parts.
+        #[serde(default, deserialize_with = "null_as_default")]
         content: Vec<OutputContent>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
     },
     FunctionCall {
-        id: String,
+        /// Absent on some function calls (upstream treats it as optional).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
         call_id: String,
         name: String,
         /// JSON-encoded arguments string (may be invalid JSON — validate
@@ -125,7 +142,8 @@ pub struct Response {
     #[serde(default)]
     pub status: Option<ResponseStatus>,
     pub model: String,
-    #[serde(default)]
+    /// The API may send `output: null`; it reads as an empty list.
+    #[serde(default, deserialize_with = "null_as_default")]
     pub output: Vec<OutputItem>,
     #[serde(default)]
     pub error: Option<ResponseError>,
@@ -259,5 +277,94 @@ mod tests {
         let item: OutputItem = serde_json::from_value(json.clone()).unwrap();
         assert!(matches!(item, OutputItem::Other(_)));
         assert_eq!(serde_json::to_value(&item).unwrap(), json);
+    }
+
+    #[test]
+    fn null_output_parses_as_empty() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5", "output": null
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert!(response.output.is_empty());
+        assert_eq!(response.output_text(), "");
+    }
+
+    #[test]
+    fn null_content_and_null_text_keep_messages_typed() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5",
+            "output": [
+                {"type": "message", "id": "msg_1", "role": "assistant", "content": null},
+                {"type": "message", "id": "msg_2", "role": "assistant", "content": [
+                    {"type": "output_text", "text": null, "annotations": []},
+                    {"type": "output_text", "text": "kept", "annotations": []}
+                ]}
+            ]
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert_eq!(response.output.len(), 2);
+        match &response.output[0] {
+            OutputItem::Known(KnownOutputItem::Message { content, .. }) => {
+                assert!(content.is_empty())
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        }
+        match &response.output[1] {
+            OutputItem::Known(KnownOutputItem::Message { content, .. }) => {
+                assert_eq!(content.len(), 2);
+                assert!(matches!(
+                    &content[0],
+                    OutputContent::OutputText { text, .. } if text.is_empty()
+                ));
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        }
+        assert_eq!(response.output_text(), "kept");
+    }
+
+    #[test]
+    fn unknown_status_does_not_fail_response() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5", "status": "brand_new_state"
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert_eq!(response.status, Some(ResponseStatus::Unknown));
+    }
+
+    #[test]
+    fn unknown_content_part_keeps_message_typed() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5",
+            "output": [{"type": "message", "id": "msg_1", "role": "assistant", "content": [
+                {"type": "audio_thing", "data": "xyz"},
+                {"type": "output_text", "text": "still here", "annotations": []}
+            ]}]
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        match &response.output[0] {
+            OutputItem::Known(KnownOutputItem::Message { content, .. }) => {
+                assert!(matches!(content[0], OutputContent::Unknown));
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        }
+        assert_eq!(response.output_text(), "still here");
+    }
+
+    #[test]
+    fn function_call_without_id_is_returned() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5",
+            "output": [{
+                "type": "function_call", "call_id": "call_1",
+                "name": "get_weather", "arguments": "{}"
+            }]
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        let calls = response.function_calls();
+        assert_eq!(calls.len(), 1);
+        assert!(matches!(
+            calls[0],
+            KnownOutputItem::FunctionCall { id: None, .. }
+        ));
     }
 }

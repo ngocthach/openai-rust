@@ -38,11 +38,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Replay the assistant turn, then answer each tool call.
     messages.push(Message::assistant_tool_calls(tool_calls.clone()));
     for call in tool_calls {
-        println!(
-            "model called {}({})",
-            call.function.name, call.function.arguments
-        );
-        // A real app would dispatch on call.function.name here.
+        // Custom (free-form) tool calls carry `custom` instead of `function`.
+        let Some(function) = &call.function else {
+            continue;
+        };
+        println!("model called {}({})", function.name, function.arguments);
+        // A real app would dispatch on function.name here.
         messages.push(Message::tool(
             json!({"temperature_c": 31, "condition": "sunny"}).to_string(),
             call.id.clone(),

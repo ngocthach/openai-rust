@@ -530,7 +530,7 @@ async fn tool_call_round_trip() {
         .tool_choice(ToolChoice::Auto);
     let completion = client.chat().completions().create(request).await.unwrap();
     let calls = completion.choices[0].message.tool_calls.as_ref().unwrap();
-    assert_eq!(calls[0].function.name, "get_weather");
+    assert_eq!(calls[0].function.as_ref().unwrap().name, "get_weather");
 }
 
 #[tokio::test]
