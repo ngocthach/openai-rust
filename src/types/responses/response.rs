@@ -68,7 +68,9 @@ pub enum OutputContent {
         /// The API may send `null` here; it reads as an empty string.
         #[serde(default, deserialize_with = "null_as_default")]
         text: String,
-        #[serde(default)]
+        /// `null` reads as no annotations, so the part stays typed and
+        /// `Response::output_text` still sees its text.
+        #[serde(default, deserialize_with = "null_as_default")]
         annotations: Vec<serde_json::Value>,
         /// Fields not modelled above (e.g. `logprobs`, `phase`, `caller`),
         /// kept so a parsed item re-serializes without data loss.
@@ -493,6 +495,24 @@ mod tests {
             other => panic!("expected typed message, got {other:?}"),
         }
         assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
+        // Serialize to text, where a leaked tag would show as a duplicate key.
+        let text = serde_json::to_string(&response.output).unwrap();
+        assert_eq!(text.matches(r#""type":"message""#).count(), 1);
+        assert_eq!(text.matches(r#""type":"function_call""#).count(), 1);
+        assert_eq!(text.matches(r#""type":"reasoning""#).count(), 1);
+    }
+
+    #[test]
+    fn output_text_with_null_annotations_stays_typed() {
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5",
+            "output": [{
+                "type": "message", "id": "msg_1", "role": "assistant",
+                "content": [{"type": "output_text", "text": "still here", "annotations": null}]
+            }]
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert_eq!(response.output_text(), "still here");
     }
 
     #[test]

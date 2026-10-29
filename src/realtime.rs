@@ -166,8 +166,9 @@ fn encode_query_component(value: &str) -> String {
 
 /// Open a realtime WebSocket connection.
 ///
-/// Sets `Authorization: Bearer <api_key>` and `OpenAI-Beta: realtime=v1`,
-/// plus org/project and any `extra_headers`, then connects over TLS (rustls).
+/// Sets `Authorization: Bearer <api_key>`, `OpenAI-Beta: realtime=v1` and
+/// the crate `User-Agent`, plus org/project and any `extra_headers`, then
+/// connects over TLS (rustls).
 pub async fn connect(options: RealtimeConnectOptions) -> Result<RealtimeSession, RealtimeError> {
     let url = build_realtime_url(&options.base_url, &options.model)?;
 
@@ -182,6 +183,8 @@ pub async fn connect(options: RealtimeConnectOptions) -> Result<RealtimeSession,
     // Beta-era header; the GA API ignores it but some OpenAI-compatible
     // gateways still expect it, so it is kept for compatibility.
     headers.insert("OpenAI-Beta", HeaderValue::from_static("realtime=v1"));
+    // Same identification as REST requests; `extra_headers` may override it.
+    headers.insert("User-Agent", HeaderValue::from_static(crate::USER_AGENT));
 
     if let Some(org) = &options.organization {
         let value = HeaderValue::from_str(org)

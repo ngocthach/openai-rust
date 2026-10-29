@@ -29,6 +29,9 @@ mod streaming;
 pub mod types;
 pub mod webhooks;
 
+/// `User-Agent` sent on every REST request and realtime upgrade.
+pub(crate) const USER_AGENT: &str = concat!("openai-compat/", env!("CARGO_PKG_VERSION"));
+
 pub use client::Client;
 pub use config::{
     ClientBuilder, DataResidency, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_MAX_RETRIES,

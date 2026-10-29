@@ -114,6 +114,28 @@ async fn client_default_headers_are_sent_on_upgrade() {
 }
 
 #[tokio::test]
+async fn upgrade_request_sends_crate_user_agent() {
+    let (tx, rx) = oneshot::channel();
+    let url = spawn_header_probe("User-Agent", tx).await;
+
+    let session = realtime::connect(RealtimeConnectOptions {
+        api_key: "sk-test-key".into(),
+        base_url: url,
+        model: "test-model".into(),
+        organization: None,
+        project: None,
+        extra_headers: Vec::new(),
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        rx.await.unwrap().as_deref(),
+        Some(concat!("openai-compat/", env!("CARGO_PKG_VERSION")))
+    );
+    drop(session);
+}
+
+#[tokio::test]
 async fn extra_headers_override_auth_on_conflict() {
     let (tx, rx) = oneshot::channel();
     let url = spawn_header_probe("Authorization", tx).await;

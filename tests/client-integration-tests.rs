@@ -1025,13 +1025,29 @@ async fn sends_crate_user_agent_unless_overridden() {
         .unwrap();
 }
 
-#[test]
-fn stored_chat_completion_exposes_metadata() {
-    let completion: openai_compat::ChatCompletion = serde_json::from_value(json!({
-        "id": "chatcmpl-1", "object": "chat.completion", "created": 1, "model": "gpt-4o",
-        "choices": [], "metadata": {"smoke": "1"}, "moderation": null
-    }))
-    .unwrap();
-    assert_eq!(completion.metadata.unwrap()["smoke"], "1");
+#[tokio::test]
+async fn stored_chat_completion_retrieve_exposes_metadata_leniently() {
+    let server = MockServer::start().await;
+    let mut body = chat_response_body();
+    // A compliant provider sends strings only; a lax one may send anything.
+    body["metadata"] = json!({"smoke": "1", "attempt": 2, "trace": null});
+    body["moderation"] = json!(null);
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let completion = client_for(&server)
+        .chat()
+        .completions()
+        .retrieve("chatcmpl-123")
+        .await
+        .unwrap();
+    let metadata = completion.metadata.unwrap();
+    assert_eq!(metadata["smoke"], "1");
+    assert_eq!(metadata["attempt"], "2");
+    assert!(!metadata.contains_key("trace"));
     assert!(completion.moderation.is_none());
 }

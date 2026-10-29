@@ -5,7 +5,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::common::{FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage};
+use super::common::{
+    lenient_string_map, FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage,
+};
 use crate::pagination::{cursor_query, HasId};
 use crate::request::bracket_query;
 
@@ -497,7 +499,13 @@ pub struct ChatCompletion {
     #[serde(default)]
     pub usage: Option<Usage>,
     /// Key-value pairs attached at creation (`store: true`) or via `update`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Read leniently: non-string values are stringified and `null` entries
+    /// dropped, so an odd provider value never fails the whole completion.
+    #[serde(
+        default,
+        deserialize_with = "lenient_string_map",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub metadata: Option<HashMap<String, String>>,
     /// Input/output moderation results, when moderation was requested.
     #[serde(default, skip_serializing_if = "Option::is_none")]
