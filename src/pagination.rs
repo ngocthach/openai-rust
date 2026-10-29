@@ -1,6 +1,8 @@
 //! Cursor pagination, mirroring `pagination.py::SyncCursorPage`: pages carry
 //! `data` + `has_more`, and the next page is requested with
-//! `after = <last item id>`.
+//! `after = <last item id>`. Conversation-style pages
+//! (`AsyncConversationCursorPage`) instead advance with the envelope's
+//! `last_id`.
 
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -78,8 +80,38 @@ impl Client {
     pub(crate) async fn paginate_all_with_headers<T: HasId + DeserializeOwned>(
         &self,
         path: &str,
+        query: Vec<(String, String)>,
+        extra_headers: Vec<(String, String)>,
+    ) -> Result<Vec<T>, OpenAIError> {
+        self.paginate_pages(
+            path,
+            query,
+            extra_headers,
+            Some(|item: &T| item.id().map(str::to_owned)),
+        )
+        .await
+    }
+
+    /// Like [`Client::paginate_all`] for endpoints whose pages advance with
+    /// the envelope `last_id` (conversation items), which may differ from the
+    /// id of the last item in `data`. A page that reports `has_more: true`
+    /// without a `last_id` is an error rather than a silent truncation.
+    pub(crate) async fn paginate_all_by_last_id<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: Vec<(String, String)>,
+    ) -> Result<Vec<T>, OpenAIError> {
+        self.paginate_pages::<T>(path, query, Vec::new(), None)
+            .await
+    }
+
+    async fn paginate_pages<T: DeserializeOwned>(
+        &self,
+        path: &str,
         mut query: Vec<(String, String)>,
         extra_headers: Vec<(String, String)>,
+        // `None` advances with the envelope `last_id` instead of an item id.
+        item_cursor: Option<fn(&T) -> Option<String>>,
     ) -> Result<Vec<T>, OpenAIError> {
         let mut items: Vec<T> = Vec::new();
         let mut previous_cursor: Option<String> = None;
@@ -91,12 +123,23 @@ impl Client {
             };
             let page: List<T> = self.execute(reqwest::Method::GET, path, options).await?;
             let has_next = page.has_next_page();
+            let envelope_cursor = page.last_id.clone();
+            let has_more = page.has_more;
             items.extend(page.data);
 
             if !has_next {
                 return Ok(items);
             }
-            let Some(cursor) = items.last().and_then(HasId::id).map(str::to_owned) else {
+            let cursor = match item_cursor {
+                Some(item_cursor) => items.last().and_then(item_cursor),
+                None => envelope_cursor,
+            };
+            let Some(cursor) = cursor else {
+                if item_cursor.is_none() && has_more == Some(true) {
+                    return Err(OpenAIError::Config(
+                        "page reported has_more but carried no last_id to continue from".into(),
+                    ));
+                }
                 return Ok(items);
             };
             // Guard against providers that ignore `after` (or omit

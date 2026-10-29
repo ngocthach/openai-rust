@@ -7,7 +7,7 @@ use reqwest::Method;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::List;
-use crate::request::{MultipartField, RequestOptions};
+use crate::request::{api_path, MultipartField, RequestOptions};
 use crate::types::files::{FileObject, FileUpload};
 use crate::types::models::Deleted;
 
@@ -65,7 +65,7 @@ impl Files {
         self.client
             .execute(
                 Method::GET,
-                &format!("/files/{file_id}"),
+                &api_path!("/files/{}", file_id),
                 RequestOptions::default(),
             )
             .await
@@ -76,7 +76,7 @@ impl Files {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/files/{file_id}"),
+                &api_path!("/files/{}", file_id),
                 RequestOptions::default(),
             )
             .await
@@ -87,7 +87,7 @@ impl Files {
         self.client
             .execute_bytes(
                 Method::GET,
-                &format!("/files/{file_id}/content"),
+                &api_path!("/files/{}/content", file_id),
                 RequestOptions::default(),
             )
             .await

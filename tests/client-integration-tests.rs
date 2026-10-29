@@ -2,6 +2,7 @@
 //! mapping, retry behavior, streaming, and pagination.
 
 use futures_util::StreamExt;
+use openai_compat::types::audio::TranscriptionRequest;
 use openai_compat::types::embeddings::{EmbeddingRequest, EmbeddingVector};
 use openai_compat::types::files::FileUpload;
 use openai_compat::{
@@ -530,7 +531,7 @@ async fn tool_call_round_trip() {
         .tool_choice(ToolChoice::Auto);
     let completion = client.chat().completions().create(request).await.unwrap();
     let calls = completion.choices[0].message.tool_calls.as_ref().unwrap();
-    assert_eq!(calls[0].function.name, "get_weather");
+    assert_eq!(calls[0].function.as_ref().unwrap().name, "get_weather");
 }
 
 #[tokio::test]
@@ -561,4 +562,428 @@ async fn generic_escape_hatch_get_and_post() {
         .await
         .unwrap();
     assert_eq!(value["created"], "yes");
+}
+
+fn simple_request() -> ChatCompletionRequest {
+    ChatCompletionRequest::new("gpt-4o", vec![Message::user("hi")])
+}
+
+#[tokio::test]
+async fn excessive_retry_after_prevents_retry_even_with_should_retry_true() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("retry-after", "300")
+                .insert_header("x-should-retry", "true")
+                .set_body_json(json!({"error": {"message": "slow down"}})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server)
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await
+        .unwrap_err();
+    let OpenAIError::Api(api) = err else {
+        panic!("expected Api error, got {err:?}");
+    };
+    assert_eq!(api.kind, ApiErrorKind::RateLimit);
+    assert_eq!(api.message, "Error code: 429 - slow down");
+}
+
+#[tokio::test]
+async fn retry_count_header_tracks_attempts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).insert_header("retry-after-ms", "5"))
+        .mount(&server)
+        .await;
+
+    let _ = client_for(&server)
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await;
+    let counts: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| {
+            r.headers
+                .get("x-stainless-retry-count")
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(counts, ["0", "1", "2"]);
+}
+
+#[tokio::test]
+async fn user_supplied_retry_count_header_is_not_overwritten() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(500).insert_header("retry-after-ms", "5"))
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("sk-test-key")
+        .base_url(format!("{}/v1", server.uri()))
+        .max_retries(1)
+        .header("X-Stainless-Retry-Count", "42")
+        .build()
+        .unwrap();
+    let _ = client.chat().completions().create(simple_request()).await;
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 2);
+    for request in &requests {
+        let values: Vec<_> = request
+            .headers
+            .get_all("x-stainless-retry-count")
+            .iter()
+            .collect();
+        assert_eq!(values.len(), 1);
+        assert_eq!(values[0].to_str().unwrap(), "42");
+    }
+}
+
+#[tokio::test]
+async fn non_json_gateway_error_message_includes_snippet() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(502).set_body_string("<h1>Bad Gateway</h1>"))
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("sk-test-key")
+        .base_url(format!("{}/v1", server.uri()))
+        .max_retries(0)
+        .build()
+        .unwrap();
+    let err = client
+        .chat()
+        .completions()
+        .create(simple_request())
+        .await
+        .unwrap_err();
+    let OpenAIError::Api(api) = err else {
+        panic!("expected Api error, got {err:?}");
+    };
+    assert_eq!(api.message, "Error code: 502 - <h1>Bad Gateway</h1>");
+    assert_eq!(api.body.as_deref(), Some("<h1>Bad Gateway</h1>"));
+}
+
+#[tokio::test]
+async fn cross_origin_redirect_is_refused_without_contacting_target() {
+    let origin = MockServer::start().await;
+    let target = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("location", format!("{}/v1/chat/completions", target.uri())),
+        )
+        .mount(&origin)
+        .await;
+
+    let err = client_for(&origin)
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("secret prompt")],
+        ))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, OpenAIError::Redirect(_)), "got: {err:?}");
+    assert!(err.to_string().contains("cross-origin"), "got: {err}");
+    assert_eq!(target.received_requests().await.unwrap().len(), 0);
+    // Redirect refusals are not retried.
+    assert_eq!(origin.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn same_origin_redirect_is_followed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/v1/moved"))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/moved"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client_for(&server)
+        .chat()
+        .completions()
+        .create(ChatCompletionRequest::new(
+            "gpt-4o",
+            vec![Message::user("hi")],
+        ))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn redirect_loop_is_bounded() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(307).insert_header("location", "/v1/models"))
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server).models().list().await.unwrap_err();
+    assert!(matches!(err, OpenAIError::Redirect(_)), "got: {err:?}");
+    let n = server.received_requests().await.unwrap().len();
+    assert!((2..=11).contains(&n), "unexpected request count {n}");
+}
+
+#[tokio::test]
+async fn path_parameters_are_percent_encoded_and_dot_segments_rejected() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "x", "object": "model", "created": 1, "owned_by": "me"
+        })))
+        .mount(&server)
+        .await;
+    let client = client_for(&server);
+
+    client.models().retrieve("ft:gpt-4o:org::id").await.unwrap();
+    client.models().retrieve("org/model?x#y").await.unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests[0].url.path(), "/v1/models/ft:gpt-4o:org::id");
+    assert_eq!(requests[1].url.path(), "/v1/models/org%2Fmodel%3Fx%23y");
+    assert_eq!(requests[1].url.query(), None);
+
+    let err = client.models().retrieve("..").await.unwrap_err();
+    assert!(matches!(err, OpenAIError::Config(_)));
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn transcription_sends_array_params_as_bracketed_multipart_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/audio/transcriptions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "text": "bonjour", "languages": [{"code": "fr"}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let request = TranscriptionRequest::new("gpt-4o-transcribe")
+        .keywords(["Acme", "Zed"])
+        .languages(["fr", "en"]);
+    let transcription = client
+        .audio()
+        .transcriptions(FileUpload::new("a.wav", vec![0u8, 1, 2]), request)
+        .await
+        .unwrap();
+    assert_eq!(transcription.languages.unwrap()[0].code, "fr");
+
+    let requests = server.received_requests().await.unwrap();
+    let body = String::from_utf8_lossy(&requests[0].body);
+    assert_eq!(body.matches("name=\"keywords[]\"").count(), 2);
+    assert_eq!(body.matches("name=\"languages[]\"").count(), 2);
+    for (field, value) in [
+        ("keywords[]", "Acme"),
+        ("keywords[]", "Zed"),
+        ("languages[]", "fr"),
+        ("languages[]", "en"),
+    ] {
+        let part = format!("name=\"{field}\"\r\n\r\n{value}\r\n");
+        assert!(body.contains(&part), "missing {field}={value}");
+    }
+}
+
+fn stored_completion_page(ids: &[&str], has_more: bool) -> serde_json::Value {
+    let data: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            let mut body = chat_response_body();
+            body["id"] = json!(id);
+            body
+        })
+        .collect();
+    json!({"object": "list", "data": data, "has_more": has_more})
+}
+
+#[tokio::test]
+async fn stored_chat_completion_retrieve_update_delete() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .and(wiremock::matchers::body_json(
+            json!({"metadata": {"k": "v"}}),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/v1/chat/completions/chatcmpl-123"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "chatcmpl-123", "object": "chat.completion.deleted", "deleted": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let completions = client.chat().completions();
+    assert_eq!(
+        completions.retrieve("chatcmpl-123").await.unwrap().id,
+        "chatcmpl-123"
+    );
+    let metadata = std::collections::HashMap::from([("k".to_string(), "v".to_string())]);
+    completions.update("chatcmpl-123", metadata).await.unwrap();
+    assert!(completions.delete("chatcmpl-123").await.unwrap().deleted);
+}
+
+#[tokio::test]
+async fn stored_chat_completion_list_encodes_metadata_filter_in_brackets() {
+    use openai_compat::types::chat::ChatCompletionListParams;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .and(query_param("metadata[k]", "v"))
+        .and(query_param("model", "gpt-4o"))
+        .and(query_param("limit", "2"))
+        .and(query_param("order", "desc"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-1"], false)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let params = ChatCompletionListParams::new()
+        .model("gpt-4o")
+        .limit(2)
+        .order("desc")
+        .metadata(std::collections::HashMap::from([(
+            "k".to_string(),
+            "v".to_string(),
+        )]));
+    let page = client_for(&server)
+        .chat()
+        .completions()
+        .list(Some(params))
+        .await
+        .unwrap();
+    assert_eq!(page.data.len(), 1);
+
+    let requests = server.received_requests().await.unwrap();
+    let query = requests[0].url.query().unwrap();
+    assert!(query.contains("metadata%5Bk%5D=v"), "raw query: {query}");
+}
+
+#[tokio::test]
+async fn stored_chat_completion_list_all_follows_item_id_cursor() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .and(query_param("after", "chatcmpl-2"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-3"], false)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(stored_completion_page(&["chatcmpl-1", "chatcmpl-2"], true)),
+        )
+        .mount(&server)
+        .await;
+
+    let all = client_for(&server)
+        .chat()
+        .completions()
+        .list_all(None)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3);
+}
+
+#[tokio::test]
+async fn stored_chat_completion_messages_lists_with_cursor_params() {
+    use openai_compat::types::chat::ChatCompletionMessagesListParams;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/chatcmpl-123/messages"))
+        .and(query_param("after", "msg_0"))
+        .and(query_param("limit", "3"))
+        .and(query_param("order", "asc"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list", "has_more": false,
+            "data": [{"id": "msg_1", "role": "user", "content": "hi", "content_parts": null}]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let params = ChatCompletionMessagesListParams::new()
+        .after("msg_0")
+        .limit(3)
+        .order("asc");
+    let page = client_for(&server)
+        .chat()
+        .completions()
+        .messages("chatcmpl-123", Some(params))
+        .await
+        .unwrap();
+    assert_eq!(page.data[0].id, "msg_1");
+    assert_eq!(page.data[0].message.content.as_deref(), Some("hi"));
+}
+
+#[tokio::test]
+async fn stored_chat_completion_id_is_path_encoded() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/chat/completions/a%2Fb"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(chat_response_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    client_for(&server)
+        .chat()
+        .completions()
+        .retrieve("a/b")
+        .await
+        .unwrap();
 }

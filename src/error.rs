@@ -72,17 +72,47 @@ impl ApiErrorKind {
 
 /// An error response (4xx/5xx) from the API.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ApiError {
     /// HTTP status code.
     pub status: u16,
     /// Status-code classification.
     pub kind: ApiErrorKind,
-    /// Full error message, `Error code: {status} - {body}`.
+    /// Full error message: `Error code: {status}`, followed by ` - {message}`
+    /// when the JSON body carries a message, or by a truncated snippet of a
+    /// non-JSON body.
     pub message: String,
     /// Parsed `{"error": {...}}` body, when present.
     pub detail: Option<ApiErrorDetail>,
     /// Value of the `x-request-id` response header.
     pub request_id: Option<String>,
+    /// Raw response body, trimmed and capped at 64 KiB; `None` when empty.
+    pub body: Option<String>,
+}
+
+/// Longest body kept in [`ApiError::body`], bounding memory and log exposure.
+const MAX_BODY_BYTES: usize = 64 * 1024;
+/// Longest non-JSON body snippet (in chars) embedded in the error message.
+const MAX_SNIPPET_CHARS: usize = 200;
+
+/// Cut `s` to at most `max_bytes` without splitting a character.
+fn truncate_to_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Trimmed `s` limited to `MAX_SNIPPET_CHARS` chars, ending in `…` when cut.
+fn snippet(s: &str) -> String {
+    match s.char_indices().nth(MAX_SNIPPET_CHARS) {
+        Some((end, _)) => format!("{}…", &s[..end]),
+        None => s.to_string(),
+    }
 }
 
 impl ApiError {
@@ -113,6 +143,9 @@ pub enum OpenAIError {
     /// Failed to reach the server.
     #[error("connection error: {0}")]
     Connection(String),
+    /// A redirect was refused (cross-origin, or too many hops). Never retried.
+    #[error("redirect refused: {0}")]
+    Redirect(String),
     /// The request timed out.
     #[error("request timed out")]
     Timeout,
@@ -135,15 +168,17 @@ impl OpenAIError {
     /// Build an [`OpenAIError::Api`] from an error response, mirroring
     /// `_base_client.py::_make_status_error_from_response`: the body is parsed
     /// as JSON and the nested `error` object extracted when present.
+    ///
+    /// The message is `Error code: {status}`, plus ` - {message}` when a JSON
+    /// body has a non-empty `message` (in `error` or at the top level). Unlike
+    /// the Python SDK, a non-JSON body is shown as a truncated snippet so
+    /// gateway errors from compatible providers stay readable.
     pub(crate) fn from_response(status: u16, request_id: Option<String>, body: &str) -> Self {
         let body = body.trim();
         let json = serde_json::from_str::<serde_json::Value>(body).ok();
-        let detail = json
-            .as_ref()
-            .and_then(|v| {
-                let error = v.get("error").cloned().unwrap_or_else(|| v.clone());
-                serde_json::from_value::<ApiErrorDetail>(error).ok()
-            })
+        let error_value = json.as_ref().map(|v| v.get("error").unwrap_or(v).clone());
+        let detail = error_value
+            .and_then(|e| serde_json::from_value::<ApiErrorDetail>(e).ok())
             .filter(|d| {
                 d.message.is_some()
                     || d.error_type.is_some()
@@ -151,15 +186,25 @@ impl OpenAIError {
                     || d.code.is_some()
             });
 
-        // Mirror `_base_client._make_status_error_from_response`: JSON bodies
-        // get the `Error code:` prefix; non-JSON bodies are used verbatim.
-        let message = if json.is_some() {
-            format!("Error code: {status} - {body}")
+        let message = if let Some(json) = &json {
+            let msg = json
+                .get("error")
+                .unwrap_or(json)
+                .get("message")
+                .and_then(|m| m.as_str())
+                .filter(|m| !m.is_empty());
+            match msg {
+                Some(msg) => format!("Error code: {status} - {msg}"),
+                None => format!("Error code: {status}"),
+            }
         } else if body.is_empty() {
             format!("Error code: {status}")
         } else {
-            body.to_string()
+            format!("Error code: {status} - {}", snippet(body))
         };
+
+        let body =
+            (!body.is_empty()).then(|| truncate_to_char_boundary(body, MAX_BODY_BYTES).to_string());
 
         Self::Api(Box::new(ApiError {
             status,
@@ -167,6 +212,7 @@ impl OpenAIError {
             message,
             detail,
             request_id,
+            body,
         }))
     }
 }
@@ -211,14 +257,114 @@ mod tests {
         assert_eq!(detail.code.as_deref(), Some("invalid_api_key"));
     }
 
+    fn api_error(status: u16, body: &str) -> ApiError {
+        let OpenAIError::Api(api) = OpenAIError::from_response(status, None, body) else {
+            panic!("expected Api error")
+        };
+        *api
+    }
+
+    #[test]
+    fn json_body_with_message_appends_message_only() {
+        let api = api_error(
+            401,
+            r#"{"error": {"message": "Invalid API key", "code": "x"}}"#,
+        );
+        assert_eq!(api.message, "Error code: 401 - Invalid API key");
+        // Top-level `message` is honored too.
+        assert_eq!(
+            api_error(400, r#"{"message": "bad"}"#).message,
+            "Error code: 400 - bad"
+        );
+    }
+
+    #[test]
+    fn json_body_without_message_has_bare_prefix() {
+        assert_eq!(
+            api_error(400, r#"{"detail": "x"}"#).message,
+            "Error code: 400"
+        );
+        assert_eq!(
+            api_error(500, r#"{"error": {"type": "server_error"}}"#).message,
+            "Error code: 500"
+        );
+        assert_eq!(
+            api_error(500, r#"{"error": {"message": ""}}"#).message,
+            "Error code: 500"
+        );
+        assert_eq!(
+            api_error(500, r#"{"error": "oops"}"#).message,
+            "Error code: 500"
+        );
+        // Valid JSON that is not an object.
+        assert_eq!(api_error(500, "[1, 2]").message, "Error code: 500");
+    }
+
+    #[test]
+    fn empty_body_has_bare_prefix_and_no_body() {
+        let api = api_error(502, "  \n");
+        assert_eq!(api.message, "Error code: 502");
+        assert!(api.body.is_none());
+    }
+
+    #[test]
+    fn html_gateway_error_shows_snippet_and_keeps_body() {
+        let html = "<html><body><h1>502 Bad Gateway</h1></body></html>";
+        let api = api_error(502, &format!("\n{html}\n"));
+        assert_eq!(api.message, format!("Error code: 502 - {html}"));
+        assert_eq!(api.body.as_deref(), Some(html));
+        assert!(api.detail.is_none());
+    }
+
+    #[test]
+    fn long_text_body_is_truncated_in_message_only() {
+        let text = "a".repeat(500);
+        let api = api_error(502, &text);
+        assert_eq!(
+            api.message,
+            format!("Error code: 502 - {}…", "a".repeat(200))
+        );
+        assert_eq!(api.body.as_deref(), Some(text.as_str()));
+
+        // Exactly at the limit: no ellipsis.
+        let exact = "b".repeat(200);
+        assert_eq!(
+            api_error(502, &exact).message,
+            format!("Error code: 502 - {exact}")
+        );
+    }
+
+    #[test]
+    fn snippet_truncation_respects_multibyte_chars() {
+        let text = "é".repeat(300);
+        let api = api_error(502, &text);
+        assert_eq!(
+            api.message,
+            format!("Error code: 502 - {}…", "é".repeat(200))
+        );
+    }
+
+    #[test]
+    fn stored_body_is_capped_on_a_char_boundary() {
+        // 3-byte chars: 64 KiB is not a multiple of 3, so the cut must back up.
+        let text = "€".repeat(40_000);
+        let api = api_error(502, &text);
+        let body = api.body.expect("body kept");
+        assert!(body.len() <= MAX_BODY_BYTES);
+        assert_eq!(body.len(), MAX_BODY_BYTES / 3 * 3);
+        assert!(body.chars().all(|c| c == '€'));
+
+        let ascii = "x".repeat(MAX_BODY_BYTES + 10);
+        assert_eq!(api_error(500, &ascii).body.unwrap().len(), MAX_BODY_BYTES);
+    }
+
     #[test]
     fn handles_non_json_body_and_numeric_code() {
         let err = OpenAIError::from_response(502, None, "Bad Gateway");
         let OpenAIError::Api(api) = err else { panic!() };
         assert!(api.detail.is_none());
         assert!(api.is_retryable());
-        // Non-JSON bodies are used verbatim (mirrors the Python SDK).
-        assert_eq!(api.message, "Bad Gateway");
+        assert_eq!(api.message, "Error code: 502 - Bad Gateway");
 
         let err = OpenAIError::from_response(502, None, "");
         let OpenAIError::Api(api) = err else { panic!() };

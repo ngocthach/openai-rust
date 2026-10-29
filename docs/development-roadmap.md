@@ -18,8 +18,14 @@ WebSockets. 118 tests, clippy clean.
 (background-mode resumable streaming), delete, cancel, `input_items` cursor
 pagination. Typed input/tool unions, `Response`/`OutputItem`, ~12 typed stream
 events + `Unknown` catch-all. See `docs/upstream-sync.md` for what's
-intentionally not ported (`compact()`, `input_tokens.count()`, `parse()`,
-Responses-over-WebSocket).
+intentionally not ported (`parse()`, Responses-over-WebSocket).
+
+## Phase 4 — Upstream sync to openai-python v3.40 (v0.4) — ✅ Complete (2026-10-28)
+
+Baseline moved from openai-python v2.44.0 to v3.40.0. Added Responses
+`compact`/`count_input_tokens`, Conversations, stored chat completions, and
+typed reasoning and prompt-cache fields. Breaking changes and security fixes
+are listed in the v0.4.0 changelog entry; see `docs/upstream-sync.md`.
 
 ## Future (unscheduled)
 
@@ -27,3 +33,6 @@ Responses-over-WebSocket).
 - Fully-typed realtime event enums (currently `serde_json::Value` + typed constructors).
 - Vector store / run poll helpers (`create_and_poll`).
 - Typed webhook event union.
+- Deferred upstream surfaces: webhook endpoint management, audio
+  voices/consents, decisions, safety, content provenance, ChatKit. Full list
+  in `docs/upstream-sync.md`.

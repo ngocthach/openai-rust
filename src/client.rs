@@ -10,6 +10,7 @@ use crate::resources::audio::Audio;
 use crate::resources::batches::Batches;
 use crate::resources::chat::Chat;
 use crate::resources::completions::Completions;
+use crate::resources::conversations::Conversations;
 use crate::resources::embeddings::Embeddings;
 use crate::resources::files::Files;
 use crate::resources::fine_tuning::FineTuning;
@@ -19,6 +20,45 @@ use crate::resources::moderations::Moderations;
 use crate::resources::responses::Responses;
 use crate::resources::uploads::Uploads;
 use crate::resources::vector_stores::VectorStores;
+
+/// `(scheme, host, port)` identity of a URL, with the scheme's default port
+/// filled in so `https://h` and `https://h:443` compare equal.
+fn origin_of(url: &reqwest::Url) -> (&str, Option<&str>, Option<u16>) {
+    (url.scheme(), url.host_str(), url.port_or_known_default())
+}
+
+fn is_same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
+    origin_of(a) == origin_of(b)
+}
+
+/// Redirects are followed (up to 10 hops) only within the same origin.
+///
+/// reqwest strips just `Authorization`/`Cookie`/`Proxy-Authorization` on a
+/// cross-host redirect and ignores scheme changes, so headers such as Azure's
+/// `api-key` would leak to the new host, an https-to-http hop would resend
+/// credentials in cleartext, and request bodies (which may be pinned to a data
+/// residency region) would be replayed elsewhere. Cross-origin redirects are
+/// refused with an error naming the target so callers can set `base_url` to it.
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .last()
+            .is_some_and(|prev| is_same_origin(prev, attempt.url()));
+        if same {
+            reqwest::redirect::Policy::limited(10).redirect(attempt)
+        } else {
+            let url = attempt.url();
+            let msg = format!(
+                "refused cross-origin redirect to {}://{}:{}: credentials and body withheld",
+                url.scheme(),
+                url.host_str().unwrap_or(""),
+                url.port_or_known_default().unwrap_or(0),
+            );
+            attempt.error(msg)
+        }
+    })
+}
 
 /// Asynchronous client for OpenAI-compatible APIs.
 ///
@@ -62,6 +102,7 @@ impl Client {
         let http = reqwest::Client::builder()
             .read_timeout(config.timeout)
             .connect_timeout(config.connect_timeout)
+            .redirect(redirect_policy())
             .build()
             .map_err(|e| OpenAIError::Config(format!("failed to build HTTP client: {e}")))?;
         Ok(Self {
@@ -153,6 +194,12 @@ impl Client {
         Threads::new(self.clone())
     }
 
+    /// The Conversations API resource: `client.conversations()`, with
+    /// `.items(id)` for the items of one conversation.
+    pub fn conversations(&self) -> Conversations {
+        Conversations::new(self.clone())
+    }
+
     /// The Responses API resource: `client.responses()`.
     pub fn responses(&self) -> Responses {
         Responses::new(self.clone())
@@ -181,8 +228,51 @@ impl Client {
             model: model.to_string(),
             organization: config.organization.clone(),
             project: config.project.clone(),
-            extra_headers: Vec::new(),
+            // Client-wide default headers ride on the upgrade request too,
+            // applied after auth so they win on conflict (as in `realtime.py`).
+            extra_headers: config.default_headers.clone(),
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url(s: &str) -> reqwest::Url {
+        reqwest::Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn same_origin_ignores_path_and_default_port() {
+        assert!(is_same_origin(
+            &url("https://api.example.com/v1/a"),
+            &url("https://api.example.com:443/v1/b?x=1")
+        ));
+    }
+
+    #[test]
+    fn scheme_change_is_cross_origin() {
+        assert!(!is_same_origin(
+            &url("https://example.com/a"),
+            &url("http://example.com/a")
+        ));
+        assert!(!is_same_origin(
+            &url("https://example.com:80/a"),
+            &url("http://example.com:80/a")
+        ));
+    }
+
+    #[test]
+    fn host_or_port_change_is_cross_origin() {
+        assert!(!is_same_origin(
+            &url("https://a.example.com/"),
+            &url("https://b.example.com/")
+        ));
+        assert!(!is_same_origin(
+            &url("http://127.0.0.1:1000/"),
+            &url("http://127.0.0.1:2000/")
+        ));
     }
 }

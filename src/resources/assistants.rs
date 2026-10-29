@@ -14,7 +14,7 @@ use serde::de::DeserializeOwned;
 use crate::client::Client;
 use crate::error::OpenAIError;
 use crate::pagination::{HasId, List};
-use crate::request::RequestOptions;
+use crate::request::{api_path, RequestOptions};
 use crate::types::assistants::{
     Assistant, AssistantCreateParams, AssistantDeleted, AssistantUpdateParams, ListParams,
     MessageCreateParams, MessageDeleted, MessageUpdateParams, Run, RunCreateParams, RunStep,
@@ -85,7 +85,7 @@ impl Assistants {
         self.client
             .execute(
                 Method::GET,
-                &format!("/assistants/{assistant_id}"),
+                &api_path!("/assistants/{}", assistant_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -101,7 +101,7 @@ impl Assistants {
         self.client
             .execute(
                 Method::POST,
-                &format!("/assistants/{assistant_id}"),
+                &api_path!("/assistants/{}", assistant_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -112,7 +112,7 @@ impl Assistants {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/assistants/{assistant_id}"),
+                &api_path!("/assistants/{}", assistant_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -182,7 +182,7 @@ impl Threads {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}"),
+                &api_path!("/threads/{}", thread_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -198,7 +198,7 @@ impl Threads {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}"),
+                &api_path!("/threads/{}", thread_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -209,7 +209,7 @@ impl Threads {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/threads/{thread_id}"),
+                &api_path!("/threads/{}", thread_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -242,7 +242,7 @@ impl ThreadMessages {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/messages"),
+                &api_path!("/threads/{}/messages", thread_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -257,7 +257,7 @@ impl ThreadMessages {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/messages/{message_id}"),
+                &api_path!("/threads/{}/messages/{}", thread_id, message_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -274,7 +274,7 @@ impl ThreadMessages {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/messages/{message_id}"),
+                &api_path!("/threads/{}/messages/{}", thread_id, message_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -289,7 +289,7 @@ impl ThreadMessages {
         self.client
             .execute(
                 Method::DELETE,
-                &format!("/threads/{thread_id}/messages/{message_id}"),
+                &api_path!("/threads/{}/messages/{}", thread_id, message_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -305,7 +305,7 @@ impl ThreadMessages {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/messages"),
+                &api_path!("/threads/{}/messages", thread_id),
                 with_beta(RequestOptions::query(query)),
             )
             .await
@@ -320,7 +320,7 @@ impl ThreadMessages {
         let query = params.unwrap_or_default().to_query();
         paginate_all_beta(
             &self.client,
-            &format!("/threads/{thread_id}/messages"),
+            &api_path!("/threads/{}/messages", thread_id),
             query,
         )
         .await
@@ -358,7 +358,7 @@ impl Runs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/runs"),
+                &api_path!("/threads/{}/runs", thread_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -369,7 +369,7 @@ impl Runs {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/runs/{run_id}"),
+                &api_path!("/threads/{}/runs/{}", thread_id, run_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -386,7 +386,7 @@ impl Runs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/runs/{run_id}"),
+                &api_path!("/threads/{}/runs/{}", thread_id, run_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -402,7 +402,7 @@ impl Runs {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/runs"),
+                &api_path!("/threads/{}/runs", thread_id),
                 with_beta(RequestOptions::query(query)),
             )
             .await
@@ -415,7 +415,12 @@ impl Runs {
         params: Option<ListParams>,
     ) -> Result<Vec<Run>, OpenAIError> {
         let query = params.unwrap_or_default().to_query();
-        paginate_all_beta(&self.client, &format!("/threads/{thread_id}/runs"), query).await
+        paginate_all_beta(
+            &self.client,
+            &api_path!("/threads/{}/runs", thread_id),
+            query,
+        )
+        .await
     }
 
     /// Cancel a run that is in progress.
@@ -423,7 +428,7 @@ impl Runs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/runs/{run_id}/cancel"),
+                &api_path!("/threads/{}/runs/{}/cancel", thread_id, run_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -440,7 +445,7 @@ impl Runs {
         self.client
             .execute(
                 Method::POST,
-                &format!("/threads/{thread_id}/runs/{run_id}/submit_tool_outputs"),
+                &api_path!("/threads/{}/runs/{}/submit_tool_outputs", thread_id, run_id),
                 with_beta(RequestOptions::json(body)),
             )
             .await
@@ -473,7 +478,7 @@ impl RunSteps {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/runs/{run_id}/steps/{step_id}"),
+                &api_path!("/threads/{}/runs/{}/steps/{}", thread_id, run_id, step_id),
                 with_beta(RequestOptions::default()),
             )
             .await
@@ -490,7 +495,7 @@ impl RunSteps {
         self.client
             .execute(
                 Method::GET,
-                &format!("/threads/{thread_id}/runs/{run_id}/steps"),
+                &api_path!("/threads/{}/runs/{}/steps", thread_id, run_id),
                 with_beta(RequestOptions::query(query)),
             )
             .await
@@ -506,7 +511,7 @@ impl RunSteps {
         let query = params.unwrap_or_default().to_query();
         paginate_all_beta(
             &self.client,
-            &format!("/threads/{thread_id}/runs/{run_id}/steps"),
+            &api_path!("/threads/{}/runs/{}/steps", thread_id, run_id),
             query,
         )
         .await

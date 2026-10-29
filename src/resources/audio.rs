@@ -110,6 +110,19 @@ fn transcription_fields(file: FileUpload, request: TranscriptionRequest) -> Vec<
                 value: response_format,
             });
         }
+        // Array params use bracketed names (`keywords[]`), one field per item.
+        for keyword in request.keywords.into_iter().flatten() {
+            fields.push(MultipartField::Text {
+                name: "keywords[]".into(),
+                value: keyword,
+            });
+        }
+        for language in request.languages.into_iter().flatten() {
+            fields.push(MultipartField::Text {
+                name: "languages[]".into(),
+                value: language,
+            });
+        }
         if let Some(temperature) = request.temperature {
             fields.push(MultipartField::Text {
                 name: "temperature".into(),

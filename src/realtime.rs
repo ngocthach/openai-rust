@@ -73,7 +73,7 @@ pub enum RealtimeError {
 /// `connect` takes `base_url` + `api_key` directly (rather than a `Client`)
 /// so the realtime module has no dependency on client configuration; an
 /// accessor on the client can populate these fields.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RealtimeConnectOptions {
     /// API key sent as `Authorization: Bearer <api_key>`.
     pub api_key: String,
@@ -88,6 +88,22 @@ pub struct RealtimeConnectOptions {
     pub project: Option<String>,
     /// Additional headers to attach to the upgrade request.
     pub extra_headers: Vec<(String, String)>,
+}
+
+// Hand-written so the API key and header values (which often carry provider
+// credentials) never reach logs; header names are kept for debugging.
+impl std::fmt::Debug for RealtimeConnectOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let header_names: Vec<&str> = self.extra_headers.iter().map(|(n, _)| n.as_str()).collect();
+        f.debug_struct("RealtimeConnectOptions")
+            .field("api_key", &"[REDACTED]")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("organization", &self.organization)
+            .field("project", &self.project)
+            .field("extra_headers", &header_names)
+            .finish()
+    }
 }
 
 /// Build the realtime WebSocket URL from an HTTP(S) base URL.

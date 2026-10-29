@@ -41,7 +41,7 @@ Full API documentation: [docs.rs/openai-compat](https://docs.rs/openai-compat)
 
 ```toml
 [dependencies]
-openai-compat = "0.3"
+openai-compat = "0.4"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"   # only needed for streaming
 ```
@@ -129,7 +129,10 @@ let request = ChatCompletionRequest::new("gpt-4o-mini", vec![Message::user("Weat
 let completion = client.chat().completions().create(request).await?;
 if let Some(calls) = &completion.choices[0].message.tool_calls {
     for call in calls {
-        println!("{} -> {}", call.function.name, call.function.arguments);
+        // `function` is `None` for custom tool calls (see `call.custom`).
+        if let Some(function) = &call.function {
+            println!("{} -> {}", function.name, function.arguments);
+        }
     }
 }
 # Ok(())
@@ -307,11 +310,13 @@ OPENAI_API_KEY=sk-... cargo run --example responses
 
 ## Scope
 
-v0.2 ports the full core client surface of `openai-python`: chat (incl.
+v0.4 tracks `openai-python` v3.40.0 (see `docs/upstream-sync.md`). It ports the full core client surface: chat (incl.
 multimodal content parts), the Responses API (incl. streaming, background
 mode, `input_items` pagination), embeddings, models, moderations, legacy
 completions, images (generate), files, audio (speech/transcriptions), batches,
 resumable uploads, fine-tuning jobs, vector stores, assistants (beta v2),
+conversations (+ items), stored chat completions (retrieve/update/list/delete/
+messages), Responses `compact` and input token counting,
 webhook signature verification, Azure OpenAI mode, realtime WebSockets,
 retries, streaming, and cursor pagination.
 
@@ -319,9 +324,9 @@ Deliberately simplified: assistants streaming runs and the fully-typed
 realtime event surface are not modeled (events are `serde_json::Value` with
 typed constructors); deep polymorphic fields (graders, chunking filters,
 step details) are `serde_json::Value`. Responses API v1 covers
-create/retrieve/delete/cancel/streaming/`input_items`, with the built-in
-tools beyond `web_search`/`file_search`/`code_interpreter`, the `compact()`
-and `input_tokens.count()` endpoints, the `parse()` structured-output
+create/retrieve/delete/cancel/streaming/`compact`/`count_input_tokens`/
+`input_items`, with the built-in tools beyond
+`web_search`/`file_search`/`code_interpreter`, the `parse()` structured-output
 wrapper, and the Responses-over-WebSocket connection left as future work. For
 untyped endpoints use the `client.get::<serde_json::Value>(...)` /
 `client.post(...)` escape hatch.

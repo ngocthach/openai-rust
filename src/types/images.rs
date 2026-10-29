@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::common::null_as_default;
+
 /// Request body for `POST /images/generations`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ImageGenerationRequest {
@@ -97,5 +99,23 @@ pub struct ImageData {
 pub struct ImagesResponse {
     #[serde(default)]
     pub created: Option<i64>,
+    /// Missing or `null` reads as an empty list.
+    #[serde(default, deserialize_with = "null_as_default")]
     pub data: Vec<ImageData>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn images_response_data_tolerates_null_and_missing() {
+        let null: ImagesResponse = serde_json::from_str(r#"{"created": 1, "data": null}"#).unwrap();
+        assert!(null.data.is_empty());
+        let missing: ImagesResponse = serde_json::from_str(r#"{"created": 1}"#).unwrap();
+        assert!(missing.data.is_empty());
+        let present: ImagesResponse =
+            serde_json::from_str(r#"{"data": [{"url": "https://x/y.png"}]}"#).unwrap();
+        assert_eq!(present.data.len(), 1);
+    }
 }

@@ -4,8 +4,8 @@
 set -euo pipefail
 
 # Baseline commit the Rust port matches — keep in sync with docs/upstream-sync.md.
-BASELINE_COMMIT="6d9262d5c666a1e4d47f63178db907ba3087ac5d"
-BASELINE_VERSION="2.44.0"
+BASELINE_COMMIT="77fd116d2326bc828bb23d4fd7960142972293a4"
+BASELINE_VERSION="3.40.0"
 
 OPENAI_PYTHON_DIR="${OPENAI_PYTHON_DIR:-$(cd "$(dirname "$0")/.." && pwd)/../openai-python}"
 
@@ -54,8 +54,11 @@ git diff --stat "$BASELINE_COMMIT" origin/main -- \
   src/openai/_exceptions.py \
   src/openai/_streaming.py \
   src/openai/pagination.py \
-  src/openai/resources/webhooks.py \
+  src/openai/resources/webhooks/webhooks.py \
   src/openai/lib/azure.py \
+  src/openai/lib/_webhooks.py \
+  src/openai/_data_residency.py \
+  src/openai/_utils/_path.py \
   src/openai/resources/realtime/realtime.py
 
 echo

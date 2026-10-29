@@ -31,7 +31,8 @@ pub mod webhooks;
 
 pub use client::Client;
 pub use config::{
-    ClientBuilder, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_MAX_RETRIES, DEFAULT_TIMEOUT,
+    ClientBuilder, DataResidency, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT,
 };
 pub use error::{ApiError, ApiErrorDetail, ApiErrorKind, OpenAIError};
 pub use pagination::{HasId, List};
@@ -39,11 +40,12 @@ pub use streaming::{EventStream, ServerSentEvent, SseDecoder};
 
 // Convenience re-exports of the most-used types.
 pub use types::chat::{
-    ChatCompletion, ChatCompletionChunk, ChatCompletionRequest, ContentPart, Message,
-    MessageContent, Stop, StreamOptions,
+    ChatCompletion, ChatCompletionChunk, ChatCompletionRequest, ChatPromptCacheOptions,
+    ContentPart, Message, MessageContent, Stop, StreamOptions,
 };
 pub use types::common::{FinishReason, ResponseFormat, Role, Tool, ToolChoice, Usage};
 pub use types::responses::{
-    CreateResponseRequest, Input, InputItem, Reasoning, Response, ResponseStreamEvent,
+    CreateResponseRequest, FileDetail, Input, InputItem, Reasoning, Response, ResponseStreamEvent,
+    ResponsesPromptCacheOptions,
 };
 pub use webhooks::{WebhookEvent, WebhookHeaders, Webhooks};

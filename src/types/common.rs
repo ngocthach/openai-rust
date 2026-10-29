@@ -1,7 +1,18 @@
 //! Shared API types: roles, finish reasons, usage, response formats, tools.
 //! Mirrors `openai-python/src/openai/types/` shared definitions.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize an explicit `null` as `T::default()`. Serde's `default` only
+/// covers a *missing* field, so pair it with this for fields the API may
+/// send as `null`: `#[serde(default, deserialize_with = "null_as_default")]`.
+pub(crate) fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 /// Message author role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +170,31 @@ impl Serialize for ToolChoice {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct NullableFields {
+        #[serde(default, deserialize_with = "null_as_default")]
+        items: Vec<u32>,
+        #[serde(default, deserialize_with = "null_as_default")]
+        text: String,
+    }
+
+    #[test]
+    fn null_as_default_handles_null_missing_and_present() {
+        let null: NullableFields =
+            serde_json::from_str(r#"{"items": null, "text": null}"#).unwrap();
+        assert!(null.items.is_empty());
+        assert_eq!(null.text, "");
+
+        let missing: NullableFields = serde_json::from_str("{}").unwrap();
+        assert!(missing.items.is_empty());
+        assert_eq!(missing.text, "");
+
+        let present: NullableFields =
+            serde_json::from_str(r#"{"items": [1, 2], "text": "hi"}"#).unwrap();
+        assert_eq!(present.items, vec![1, 2]);
+        assert_eq!(present.text, "hi");
+    }
 
     #[test]
     fn tool_choice_serialization() {
