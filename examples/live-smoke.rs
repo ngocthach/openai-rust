@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 format!(
                     "object={} finish={:?} has_text={} usage={}",
                     c.object,
-                    c.choices[0].finish_reason,
+                    c.choices.first().and_then(|c| c.finish_reason),
                     c.content().is_some_and(|t| !t.is_empty()),
                     c.usage.is_some()
                 ),
@@ -344,10 +344,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     page.data.len(),
                     page.has_more.unwrap_or_default(),
                     all.len(),
-                    page.data[0].item_type
+                    page.data
+                        .first()
+                        .map(|i| i.item_type.as_str())
+                        .unwrap_or("-")
                 ),
             );
-            let item_id = added.data[0].id.clone().unwrap_or_default();
+            let item_id = added
+                .data
+                .first()
+                .and_then(|i| i.id.clone())
+                .unwrap_or_default();
             let it = items.retrieve(&item_id, None).await?;
             ok(
                 "conversations.items.retrieve",

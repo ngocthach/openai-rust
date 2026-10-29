@@ -14,6 +14,32 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// Deserialize a `metadata` object without ever failing the enclosing
+/// response. Upstream does not validate response bodies, so a provider may
+/// send non-string values: scalars are stringified, `null` entries are
+/// dropped, and a non-object value reads as `None`.
+pub(crate) fn lenient_string_map<'de, D>(
+    deserializer: D,
+) -> Result<Option<std::collections::HashMap<String, String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let Some(serde_json::Value::Object(map)) =
+        Option::<serde_json::Value>::deserialize(deserializer)?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(
+        map.into_iter()
+            .filter_map(|(k, v)| match v {
+                serde_json::Value::Null => None,
+                serde_json::Value::String(s) => Some((k, s)),
+                other => Some((k, other.to_string())),
+            })
+            .collect(),
+    ))
+}
+
 /// Message author role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
