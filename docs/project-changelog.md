@@ -1,5 +1,16 @@
 # Project Changelog
 
+## v0.5.1 — 2026-10-29
+
+Follow-ups from a review of v0.5.0. Verification: 247 tests passing (`cargo test`), clippy clean (`-D warnings`).
+
+### Fixed
+
+- **`ChatCompletion.metadata` no longer fails the response.** v0.5.0 required string values; a provider sending a number or `null` made the whole completion (or a whole `list` page) a parse error. Values are now read leniently: non-strings are stringified, `null` entries dropped, a non-object reads as `None`. Upstream does not validate response bodies.
+- **Realtime upgrade requests send the crate `User-Agent`**, as REST requests do since v0.5.0 and as upstream does.
+- **`output_text` parts with `"annotations": null`** stay typed, so `Response::output_text()` returns their text instead of an empty string.
+- `examples/live-smoke.rs` reports an empty `choices`/`data` as a result line instead of panicking.
+
 ## v0.5.0 — 2026-10-29
 
 Parity fixes from a review of v0.4.0 against openai-python v3.40.0, checked live: the same 22 scenarios (models, chat, streaming, stored completions, Responses create/stream/compact/input tokens, conversations and items, error mapping, path encoding) behave the same with both SDKs. Run `cargo run --example live-smoke` to repeat the Rust side.
