@@ -63,15 +63,25 @@ pub struct ResponseUsage {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum OutputContent {
+    #[non_exhaustive]
     OutputText {
         /// The API may send `null` here; it reads as an empty string.
         #[serde(default, deserialize_with = "null_as_default")]
         text: String,
         #[serde(default)]
         annotations: Vec<serde_json::Value>,
+        /// Fields not modelled above (e.g. `logprobs`, `phase`, `caller`),
+        /// kept so a parsed item re-serializes without data loss.
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
+    #[non_exhaustive]
     Refusal {
         refusal: String,
+        /// Fields not modelled above,
+        /// kept so a parsed item re-serializes without data loss.
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
 }
 
@@ -95,6 +105,7 @@ pub enum OutputContentPart {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum KnownOutputItem {
+    #[non_exhaustive]
     Message {
         id: String,
         role: String,
@@ -103,7 +114,12 @@ pub enum KnownOutputItem {
         content: Vec<OutputContentPart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// Fields not modelled above (e.g. `logprobs`, `phase`, `caller`),
+        /// kept so a parsed item re-serializes without data loss.
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
+    #[non_exhaustive]
     FunctionCall {
         /// Absent on some function calls (upstream treats it as optional).
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -115,7 +131,12 @@ pub enum KnownOutputItem {
         arguments: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         status: Option<String>,
+        /// Fields not modelled above (e.g. `logprobs`, `phase`, `caller`),
+        /// kept so a parsed item re-serializes without data loss.
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
+    #[non_exhaustive]
     Reasoning {
         id: String,
         summary: Vec<serde_json::Value>,
@@ -123,6 +144,10 @@ pub enum KnownOutputItem {
         content: Option<Vec<serde_json::Value>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         encrypted_content: Option<String>,
+        /// Fields not modelled above (e.g. `logprobs`, `phase`, `caller`),
+        /// kept so a parsed item re-serializes without data loss.
+        #[serde(flatten)]
+        extra: serde_json::Map<String, serde_json::Value>,
     },
 }
 
@@ -428,6 +453,45 @@ mod tests {
             response.output[0],
             OutputItem::Known(KnownOutputItem::Message { .. })
         ));
+        assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
+    }
+
+    #[test]
+    fn known_items_keep_unmodelled_fields_on_round_trip() {
+        let output = serde_json::json!([
+            {
+                "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
+                "phase": "final_answer",
+                "content": [{
+                    "type": "output_text", "text": "x", "annotations": [],
+                    "logprobs": [{"token": "x", "logprob": -0.1, "bytes": [120], "top_logprobs": []}]
+                }]
+            },
+            {
+                "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "f",
+                "arguments": "{}", "namespace": "ns", "async": true, "caller": {"type": "direct"}
+            },
+            {"type": "reasoning", "id": "rs_1", "summary": [], "status": "completed"}
+        ]);
+        let json = serde_json::json!({
+            "id": "resp_1", "created_at": 1.0, "model": "gpt-5", "output": output
+        });
+        let response: Response = serde_json::from_value(json).unwrap();
+        assert!(response
+            .output
+            .iter()
+            .all(|item| matches!(item, OutputItem::Known(_))));
+        match &response.output[0] {
+            OutputItem::Known(KnownOutputItem::Message { content, extra, .. }) => {
+                assert_eq!(extra["phase"], "final_answer");
+                assert!(matches!(
+                    &content[0],
+                    OutputContentPart::Known(OutputContent::OutputText { extra, .. })
+                        if extra.contains_key("logprobs")
+                ));
+            }
+            other => panic!("expected typed message, got {other:?}"),
+        }
         assert_eq!(serde_json::to_value(&response.output).unwrap(), output);
     }
 

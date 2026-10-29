@@ -268,6 +268,32 @@ async fn azure_pinned_deployment_routes_multipart_requests() {
 }
 
 #[tokio::test]
+async fn azure_derives_deployment_from_multipart_model() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/openai/deployments/whisper-1/audio/transcriptions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"text": "hi"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = Client::builder()
+        .api_key("k")
+        .azure(server.uri(), "2024-06-01")
+        .build()
+        .unwrap();
+    let transcription = client
+        .audio()
+        .transcriptions(
+            FileUpload::new("a.wav", b"RIFF".to_vec()),
+            TranscriptionRequest::new("whisper-1"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(transcription.text, "hi");
+}
+
+#[tokio::test]
 async fn azure_derived_deployment_is_percent_encoded() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

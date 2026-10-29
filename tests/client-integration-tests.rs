@@ -987,3 +987,51 @@ async fn stored_chat_completion_id_is_path_encoded() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn sends_crate_user_agent_unless_overridden() {
+    let server = MockServer::start().await;
+    let expected = concat!("openai-compat/", env!("CARGO_PKG_VERSION"));
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("user-agent", expected))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"object": "list", "data": []})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    client_for(&server).models().list().await.unwrap();
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("user-agent", "my-app/1.0"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"object": "list", "data": []})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Client::builder()
+        .api_key("sk-test-key")
+        .base_url(format!("{}/v1", server.uri()))
+        .header("User-Agent", "my-app/1.0")
+        .build()
+        .unwrap()
+        .models()
+        .list()
+        .await
+        .unwrap();
+}
+
+#[test]
+fn stored_chat_completion_exposes_metadata() {
+    let completion: openai_compat::ChatCompletion = serde_json::from_value(json!({
+        "id": "chatcmpl-1", "object": "chat.completion", "created": 1, "model": "gpt-4o",
+        "choices": [], "metadata": {"smoke": "1"}, "moderation": null
+    }))
+    .unwrap();
+    assert_eq!(completion.metadata.unwrap()["smoke"], "1");
+    assert!(completion.moderation.is_none());
+}
