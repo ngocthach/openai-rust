@@ -254,3 +254,24 @@ async fn items_list_all_errors_when_more_pages_but_no_last_id() {
         .unwrap_err();
     assert!(err.to_string().contains("last_id"), "got: {err}");
 }
+
+#[tokio::test]
+async fn items_list_all_does_not_refetch_on_empty_last_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/conversations/conv_1/items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "object": "list", "data": [item("msg_1")], "last_id": "", "has_more": true
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let err = client_for(&server)
+        .conversations()
+        .items("conv_1")
+        .list_all(None)
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("last_id"), "got: {err}");
+}

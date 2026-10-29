@@ -21,6 +21,8 @@ use crate::resources::responses::Responses;
 use crate::resources::uploads::Uploads;
 use crate::resources::vector_stores::VectorStores;
 
+const USER_AGENT: &str = concat!("openai-compat/", env!("CARGO_PKG_VERSION"));
+
 /// `(scheme, host, port)` identity of a URL, with the scheme's default port
 /// filled in so `https://h` and `https://h:443` compare equal.
 fn origin_of(url: &reqwest::Url) -> (&str, Option<&str>, Option<u16>) {
@@ -103,6 +105,10 @@ impl Client {
             .read_timeout(config.timeout)
             .connect_timeout(config.connect_timeout)
             .redirect(redirect_policy())
+            // Upstream always identifies itself; some gateways reject
+            // requests without a User-Agent. A `User-Agent` set through
+            // `ClientBuilder::header` still overrides this.
+            .user_agent(USER_AGENT)
             .build()
             .map_err(|e| OpenAIError::Config(format!("failed to build HTTP client: {e}")))?;
         Ok(Self {

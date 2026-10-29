@@ -250,9 +250,17 @@ impl Client {
                     path.to_string()
                 }
             } else {
+                // Upstream reads `model` from the body mapping, which for
+                // multipart requests is the form fields.
                 let model = match &options.body {
                     Payload::Json(value) => value.get("model").and_then(|m| m.as_str()),
-                    _ => None,
+                    Payload::Multipart(fields) => fields.iter().find_map(|field| match field {
+                        MultipartField::Text { name, value } if name == "model" => {
+                            Some(value.as_str())
+                        }
+                        _ => None,
+                    }),
+                    Payload::None => None,
                 };
                 crate::azure::rewrite_path(path, false, model)?
             }

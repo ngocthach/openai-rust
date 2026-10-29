@@ -1,5 +1,23 @@
 # Project Changelog
 
+## v0.5.0 — 2026-10-29
+
+Parity fixes from a review of v0.4.0 against openai-python v3.40.0, checked live: the same 22 scenarios (models, chat, streaming, stored completions, Responses create/stream/compact/input tokens, conversations and items, error mapping, path encoding) behave the same with both SDKs. Run `cargo run --example live-smoke` to repeat the Rust side.
+Verification: 245 tests passing (`cargo test`), clippy clean (`-D warnings`).
+
+### Fixed
+
+- **`ChatCompletion`** gains `metadata` and `moderation`, so stored completions returned by `retrieve` and `update` expose their metadata.
+- **Azure without a pinned deployment**: multipart requests (audio transcriptions) now take the deployment from the form's `model` field, as upstream does, instead of posting to `/openai/audio/transcriptions`.
+- **User-Agent**: every request sends `openai-compat/{version}`; a `User-Agent` set with `ClientBuilder::header` still wins.
+- **Response output items keep unmodelled fields**: `logprobs` on `output_text` (requested with `message.output_text.logprobs`), message `phase`, function call `namespace`/`async`/`caller`, reasoning `status`, and any future field now survive parsing and re-serialization.
+- **Pagination**: an empty `last_id` no longer re-requests the first page.
+
+### Changed (breaking)
+
+- **`KnownOutputItem` and `OutputContent` variants** each gain an `extra: Map<String, Value>` field and are `#[non_exhaustive]`.
+  - Migration: add `..` to patterns that list every field; build items for replay as `OutputItem::Other(json)` instead of variant literals.
+
 ## v0.4.0 — 2026-10-28
 
 Syncs the port to openai-python v3.40.0 (`77fd116d`); see `docs/upstream-sync.md`.

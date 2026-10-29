@@ -81,9 +81,9 @@ pub fn azure_base_url(endpoint: &str, deployment: Option<&str>) -> String {
 /// - Python checks `"/deployments" not in base_url.path`; here that condition is
 ///   passed explicitly as `has_deployment` (a configured deployment always puts
 ///   `/deployments/{dep}` in the base URL, so the two are equivalent).
-/// - Python only rewrites when `json_data` is a mapping; that is captured by
-///   `model_from_body` being `None` whenever there is no JSON object body or no
-///   `model` field.
+/// - Python only rewrites when `json_data` is a mapping (a JSON object or the
+///   form fields of a multipart request); the caller passes the `model` found
+///   there, or `None` when the body has none.
 ///
 /// The model is percent-encoded as one path segment (and `.`/`..` rejected), so
 /// a hostile `model` value cannot alter the request path.

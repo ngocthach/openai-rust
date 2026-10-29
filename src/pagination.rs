@@ -132,7 +132,8 @@ impl Client {
             }
             let cursor = match item_cursor {
                 Some(item_cursor) => items.last().and_then(item_cursor),
-                None => envelope_cursor,
+                // An empty `last_id` ends pagination, as upstream treats it.
+                None => envelope_cursor.filter(|c| !c.is_empty()),
             };
             let Some(cursor) = cursor else {
                 if item_cursor.is_none() && has_more == Some(true) {

@@ -496,6 +496,12 @@ pub struct ChatCompletion {
     pub system_fingerprint: Option<String>,
     #[serde(default)]
     pub usage: Option<Usage>,
+    /// Key-value pairs attached at creation (`store: true`) or via `update`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, String>>,
+    /// Input/output moderation results, when moderation was requested.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moderation: Option<serde_json::Value>,
 }
 
 impl ChatCompletion {
