@@ -11,7 +11,7 @@ upstream changes.
 |---|---|
 | openai-python version | **v3.40.0** |
 | commit | `77fd116d2326bc828bb23d4fd7960142972293a4` |
-| ported | 2026-10-28, openai-compat v0.4.0 |
+| ported | 2026-10-28, openai-compat v0.4.0; parity fixes in v0.5.0 (2026-10-29) |
 
 Previous baseline: v2.44.0 (`6d9262d5c666a1e4d47f63178db907ba3087ac5d`),
 ported 2026-07-04 (v0.2.0); Responses API added 2026-07-05 (v0.3.0).
@@ -47,6 +47,7 @@ release; the rest are retired upstream or not planned for the crate.
 | Retired upstream | Videos (shut down 2026-09-24), image variations (endpoint no longer accepts requests) |
 | Responses | `parse()` typed wrapper, WebSocket mode |
 | Other typed fields | Reachable through `Response.extra` and the `extra` maps on Responses requests |
+| Azure | `azure_ad_token_provider` (per-request token refresh); a static `azure_ad_token` must be rebuilt into a new client before it expires; `AZURE_OPENAI_ENDPOINT` env fallback |
 | Other | Assistants streaming runs, fully-typed realtime events (events are `serde_json::Value` with typed constructors), resumable-upload helpers beyond the REST calls, sync client |
 
 ## Deliberate divergences
@@ -66,6 +67,8 @@ Behavior that differs from openai-python on purpose.
 | Response status | An unrecognized `ResponseStatus` deserializes to `Unknown` and serializes back as `"unknown"`; the original string is not kept. |
 | Input token count | `InputTokenCountRequest.conversation` takes an id string only; the object form goes through `extra`. |
 | Enums | Request-only enums have no `Unknown` variant. |
+| Pagination | `list_all` by `last_id` returns an error when a page reports `has_more` with a missing or empty `last_id`. Upstream stops and keeps the items fetched so far. |
+| User-Agent | Sends `openai-compat/{version}` and no `x-stainless-*` platform headers. Upstream sends `OpenAI/Python {version}` plus platform headers. |
 
 ## Sync process
 

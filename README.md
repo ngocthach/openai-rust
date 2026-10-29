@@ -41,7 +41,7 @@ Full API documentation: [docs.rs/openai-compat](https://docs.rs/openai-compat)
 
 ```toml
 [dependencies]
-openai-compat = "0.4"
+openai-compat = "0.5"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"   # only needed for streaming
 ```
@@ -310,7 +310,7 @@ OPENAI_API_KEY=sk-... cargo run --example responses
 
 ## Scope
 
-v0.4 tracks `openai-python` v3.40.0 (see `docs/upstream-sync.md`). It ports the full core client surface: chat (incl.
+v0.5 tracks `openai-python` v3.40.0 (see `docs/upstream-sync.md`). It ports the full core client surface: chat (incl.
 multimodal content parts), the Responses API (incl. streaming, background
 mode, `input_items` pagination), embeddings, models, moderations, legacy
 completions, images (generate), files, audio (speech/transcriptions), batches,
